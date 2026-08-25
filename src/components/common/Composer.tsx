@@ -534,8 +534,20 @@ const Composer = ({
    * 不自己去调 sendMessage：原生这条路上还有限流、字数限制、回复引用、
    * 定时发送、静默发送等一整套逻辑，绕过去等于把它们全丢了。
    */
-  const handleImHubSend = useLastCallback((text: string) => {
+  /** 把译文写进原生输入框，让它成为"即将发出去的内容"的唯一展示处 */
+  const setImHubDraft = useLastCallback((text: string) => {
     richEditor.replaceValue(buildRichMessageFromFormatted({ text }));
+  });
+
+  const getImHubDraft = useLastCallback((): string => richEditor.getAsFormatted()?.text ?? '');
+
+  /**
+   * 走原生发送流程，发的就是原生输入框里的内容。
+   *
+   * 不自己去调 sendMessage：原生这条路上还有限流、字数限制、回复引用、
+   * 定时发送、静默发送等一整套逻辑，绕过去等于把它们全丢了。
+   */
+  const handleImHubSend = useLastCallback(() => {
     void handleSend();
   });
 
@@ -2659,6 +2671,8 @@ const Composer = ({
           <ImHubComposer
             chatId={chatId}
             getPeerText={getImHubPeerText}
+            setDraft={setImHubDraft}
+            getDraft={getImHubDraft}
             onSend={handleImHubSend}
           />
           <ComposerEmbeddedMessage

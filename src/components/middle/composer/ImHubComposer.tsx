@@ -14,8 +14,12 @@ type OwnProps = {
   chatId: string;
   /** 客户最近一条有文字的消息，用来自动判断回复语言 */
   getPeerText: () => string | undefined;
-  /** 把最终文本交给原生发送流程 */
-  onSend: (text: string) => void;
+  /** 把文本写进原生输入框 */
+  setDraft: (text: string) => void;
+  /** 读原生输入框当前内容 */
+  getDraft: () => string;
+  /** 触发原生发送流程（发的就是原生输入框里的内容） */
+  onSend: NoneToVoidFunction;
 };
 
 const LANG_OPTIONS: { code: string; label: string }[] = [
@@ -57,7 +61,9 @@ const BACK_TRANSLATE_DEBOUNCE = 600;
  * 主链路，最终文本仍然交给原生的发送流程，所以限流、字数限制、回复引用
  * 这些全都照常生效。
  */
-const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
+const ImHubComposer: FC<OwnProps> = ({
+  chatId, getPeerText, setDraft, getDraft, onSend,
+}) => {
   const [zh, setZh] = useState('');
   const [preview, setPreview] = useState('');
   const [previewSource, setPreviewSource] = useState('');
@@ -84,6 +90,7 @@ const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
     setBackTranslated(undefined);
     setError(undefined);
     setAutoLang(undefined);
+    setDraft('');
     try {
       setLockedLang(localStorage.getItem(lockKey(chatId)) || undefined);
     } catch {
@@ -137,6 +144,9 @@ const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
       }
       setPreview(translated);
       setPreviewSource(source);
+      // 同步写进原生输入框：那一行显示的就是即将发出去的内容，发送前在那里
+      // 再核一遍。这也让它有了明确角色，不再像"第二个输入框"
+      setDraft(translated);
       scheduleBackTranslate(translated);
       // 焦点移到译文框：下一次回车就是发送，光标该已经落在要读的内容上
       requestAnimationFrame(() => previewRef.current?.focus());
@@ -146,9 +156,12 @@ const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
   }
 
   function handleSend() {
-    const text = preview.trim();
+    // 以原生输入框为准：它显示的就是即将发出去的内容，员工可能直接在那里
+    // 改了字。取预览框的值会把他刚改的悄悄覆盖掉。
+    const text = (getDraft().trim() || preview.trim());
     if (!text) return;
-    onSend(text);
+    setDraft(text);
+    onSend();
     setZh('');
     setPreview('');
     setPreviewSource('');
@@ -220,7 +233,9 @@ const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
           <div className={styles.label}>
             <span className={buildClassName(styles.dot, styles.dotAccent)} />
             译文预览
-            <span className={styles.labelHint}>可直接改，悬停看原文与回译对照</span>
+            <span className={styles.labelHint}>
+              可直接改，悬停看原文与回译对照 · 下方输入框显示的就是即将发出的内容
+            </span>
           </div>
 
           <div
@@ -233,8 +248,10 @@ const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
               className={buildClassName(styles.input, styles.preview)}
               value={preview}
               onChange={(e) => {
-                setPreview(e.currentTarget.value);
-                scheduleBackTranslate(e.currentTarget.value);
+                const next = e.currentTarget.value;
+                setPreview(next);
+                setDraft(next);
+                scheduleBackTranslate(next);
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
