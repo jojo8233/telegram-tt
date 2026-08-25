@@ -3,23 +3,17 @@ import React, {
   memo, useEffect, useRef, useState,
 } from '../../../lib/teact/teact';
 
+import { getGlobal } from '../../../global';
+import { selectChatMessages } from '../../../global/selectors';
 import buildClassName from '../../../util/buildClassName';
 import {
-  detectLanguageViaImHub, isImHubTranslationEnabled, translateOne,
+  detectLanguageViaImHub, getImHubDraftBridge, isImHubTranslationEnabled, translateOne,
 } from '../../../util/imhub';
 
 import styles from './ImHubComposer.module.scss';
 
 type OwnProps = {
   chatId: string;
-  /** 客户最近一条有文字的消息，用来自动判断回复语言 */
-  getPeerText: () => string | undefined;
-  /** 把文本写进原生输入框 */
-  setDraft: (text: string) => void;
-  /** 读原生输入框当前内容 */
-  getDraft: () => string;
-  /** 触发原生发送流程（发的就是原生输入框里的内容） */
-  onSend: NoneToVoidFunction;
 };
 
 const LANG_OPTIONS: { code: string; label: string }[] = [
@@ -61,9 +55,7 @@ const BACK_TRANSLATE_DEBOUNCE = 600;
  * 主链路，最终文本仍然交给原生的发送流程，所以限流、字数限制、回复引用
  * 这些全都照常生效。
  */
-const ImHubComposer: FC<OwnProps> = ({
-  chatId, getPeerText, setDraft, getDraft, onSend,
-}) => {
+const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
   const [zh, setZh] = useState('');
   const [preview, setPreview] = useState('');
   const [previewSource, setPreviewSource] = useState('');
@@ -80,6 +72,36 @@ const ImHubComposer: FC<OwnProps> = ({
   const backTimerRef = useRef<number | undefined>();
 
   const targetLang = lockedLang || autoLang || FALLBACK_LANG;
+
+  function setDraft(text: string) {
+    getImHubDraftBridge()?.setDraft(text);
+  }
+
+  function getDraft(): string {
+    return getImHubDraftBridge()?.getDraft() ?? '';
+  }
+
+  function onSend() {
+    getImHubDraftBridge()?.send();
+  }
+
+  /**
+   * 客户最近一条有文字的消息，用来自动判断回复语言。
+   *
+   * 从最新往回找，跳过自己发的和没有文字的（图片、贴纸、语音）。
+   */
+  function getPeerText(): string | undefined {
+    const byId = selectChatMessages(getGlobal(), chatId);
+    if (!byId) return undefined;
+    const ids = Object.keys(byId).map(Number).sort((a, b) => b - a);
+    for (const id of ids) {
+      const message = byId[id];
+      if (!message || message.isOutgoing) continue;
+      const text = message.content?.text?.text;
+      if (text) return text;
+    }
+    return undefined;
+  }
   const hasPreview = preview.trim().length > 0;
 
   // 换会话：清空一切，并读回这个会话上次锁定的语言
@@ -114,7 +136,7 @@ const ImHubComposer: FC<OwnProps> = ({
       setAutoLang(code);
     });
     return () => { isCancelled = true; };
-  }, [chatId, lockedLang, getPeerText]);
+  }, [chatId, lockedLang]);
 
   function scheduleBackTranslate(text: string) {
     window.clearTimeout(backTimerRef.current);

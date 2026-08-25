@@ -28,6 +28,32 @@ declare global {
   }
 }
 
+/**
+ * 翻译工作区与原生输入框之间的通道。
+ *
+ * 工作区渲染在 Composer 组件**外面**（原生输入框下方，见 MiddleColumn），
+ * 拿不到 Composer 内部的 richEditor 和 handleSend，所以由 Composer 在挂载时
+ * 把这三个动作登记进来。
+ *
+ * 用模块级单例而不是 React context：同一时刻只有一个会话的输入框是活的，
+ * 而套一层 provider 要改 MiddleColumn 的结构，补丁面反而更大。
+ */
+export interface ImHubDraftBridge {
+  setDraft(text: string): void;
+  getDraft(): string;
+  send(): void;
+}
+
+let draftBridge: ImHubDraftBridge | undefined;
+
+export function registerImHubDraftBridge(bridge: ImHubDraftBridge | undefined) {
+  draftBridge = bridge;
+}
+
+export function getImHubDraftBridge(): ImHubDraftBridge | undefined {
+  return draftBridge;
+}
+
 export function getImHubConfig(): ImHubConfig | undefined {
   const cfg = window.__IM_HUB__;
   if (!cfg?.serverUrl || !cfg.token) return undefined;

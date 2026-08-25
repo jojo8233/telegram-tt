@@ -32,16 +32,24 @@ $radius-card: 1.625rem;   // 26px
 $radius-input: 1.25rem;   // 20px
 $radius-pill: 999px;
 
+// 它在原生输入框**下方**，是一个独立区域，不是输入框的一部分。
+// 上方留出明显间距、自带边框和底色，视觉上必须一眼能和输入框分开——
+// 贴在一起就会又变成"输入框里面冒出来的框"。
 .root {
   position: relative;
-  margin: 0.5rem 0 0.25rem;
+  // 跟着原生输入框的左右边距走，不要顶满整列
+  margin: 0.75rem auto 0.5rem;
   padding: 1rem;
+  max-width: var(--composer-max-width, 45.5rem);
+  width: 100%;
   background: $card;
   border: 1px solid $border;
   border-radius: $radius-card;
   box-shadow: 0 4px 14px rgba(48, 51, 48, 0.05);
   color: $text;
   font-size: 0.9375rem;
+  // 长会话里输入区不该被挤没
+  flex-shrink: 0;
 }
 
 .label {
