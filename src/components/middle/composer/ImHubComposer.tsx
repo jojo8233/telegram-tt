@@ -181,6 +181,23 @@ const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
 
   return (
     <div className={styles.root} dir="auto">
+      {/* 对照框浮在整个面板之上：挂在译文框上的话会盖住上方的中文原文，
+          正是要对照的两样东西互相遮挡 */}
+      {isHovering && hasPreview && (
+        <div className={styles.tooltip}>
+          <div className={styles.tooltipRow}>
+            <span className={styles.tooltipLabel}>你输入的</span>
+            <span>{previewSource}</span>
+          </div>
+          <div className={styles.tooltipRow}>
+            <span className={styles.tooltipLabel}>回译成中文</span>
+            <span>{isBackPending ? '回译中…' : (backTranslated ?? '回译不可用')}</span>
+          </div>
+          <div className={styles.tooltipHint}>
+            回译顺不代表翻对了。要比的是关键信息有没有丢：价格、数量、否定词、时间、人名。
+          </div>
+        </div>
+      )}
       <div className={styles.label}>
         <span className={styles.dot} />
         中文原文
@@ -211,21 +228,6 @@ const ImHubComposer: FC<OwnProps> = ({ chatId, getPeerText, onSend }) => {
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={() => setIsHovering(false)}
           >
-            {isHovering && (
-              <div className={styles.tooltip}>
-                <div className={styles.tooltipRow}>
-                  <span className={styles.tooltipLabel}>你输入的</span>
-                  <span>{previewSource}</span>
-                </div>
-                <div className={styles.tooltipRow}>
-                  <span className={styles.tooltipLabel}>回译成中文</span>
-                  <span>{isBackPending ? '回译中…' : (backTranslated ?? '回译不可用')}</span>
-                </div>
-                <div className={styles.tooltipHint}>
-                  回译顺不代表翻对了。要比的是关键信息有没有丢：价格、数量、否定词、时间、人名。
-                </div>
-              </div>
-            )}
             <textarea
               ref={previewRef}
               className={buildClassName(styles.input, styles.preview)}

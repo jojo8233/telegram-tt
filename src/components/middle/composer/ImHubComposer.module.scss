@@ -1,11 +1,15 @@
-// 发送前译文校对区。贴在原生输入框上方，跟着 Telegram 的主题变量走，
-// 免得在深色模式下变成一块刺眼的白。
+// 发送前译文校对区。
+//
+// 做成贴在原生输入框正上方的一整条，不是浮在上面的卡片：加了阴影和圆角之后
+// 它看起来像"输入框里面又冒出一个框"，而它其实是这个产品的主输入区。
+// 颜色全部走 Telegram 的主题变量，免得深色模式下变成一块刺眼的白。
 .root {
-  margin: 0 0 0.375rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: var(--border-radius-default);
+  position: relative;
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.625rem;
   background: var(--color-background);
-  box-shadow: 0 1px 2px var(--color-default-shadow);
+  border-top: 1px solid var(--color-borders);
+  border-radius: var(--border-radius-default) var(--border-radius-default) 0 0;
   font-size: 0.9375rem;
 }
 
@@ -38,8 +42,8 @@
 
 .input {
   width: 100%;
-  min-height: 3.25rem;
-  max-height: 9rem;
+  min-height: 2.5rem;
+  max-height: 7rem;
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--color-borders-input);
   border-radius: var(--border-radius-messages-small);
@@ -68,20 +72,25 @@
   border-color: var(--color-primary);
 }
 
-// 悬停对照。绝对定位在译文框上方，不占布局，否则每次悬停整个输入区都会跳
+// 悬停对照。绝对定位在整个面板上方，不占布局——否则每次悬停输入区都会跳一下。
+//
+// 背景必须是不透明的实色：半透明会让底下的原文透上来，而这里正是要读文字的
+// 地方，两层字叠在一起等于什么都看不清。
 .tooltip {
   position: absolute;
   bottom: 100%;
   left: 0;
   right: 0;
-  margin-bottom: 0.375rem;
+  margin-bottom: 0.25rem;
   padding: 0.625rem 0.75rem;
   border-radius: var(--border-radius-default);
-  background: var(--color-background-compact-menu);
-  box-shadow: 0 2px 8px var(--color-default-shadow);
+  background: var(--color-background);
+  border: 1px solid var(--color-borders);
+  box-shadow: 0 4px 16px var(--color-default-shadow);
+  color: var(--color-text);
   font-size: 0.8125rem;
   line-height: 1.5;
-  z-index: 3;
+  z-index: 10;
 }
 
 .tooltipRow {
