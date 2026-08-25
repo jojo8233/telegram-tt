@@ -1,0 +1,188 @@
+// 发送前译文校对区。贴在原生输入框上方，跟着 Telegram 的主题变量走，
+// 免得在深色模式下变成一块刺眼的白。
+.root {
+  margin: 0 0 0.375rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--border-radius-default);
+  background: var(--color-background);
+  box-shadow: 0 1px 2px var(--color-default-shadow);
+  font-size: 0.9375rem;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.labelHint {
+  font-weight: var(--font-weight-normal);
+  opacity: 0.8;
+}
+
+.dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.dotAccent {
+  background: var(--color-primary);
+}
+
+.input {
+  width: 100%;
+  min-height: 3.25rem;
+  max-height: 9rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--color-borders-input);
+  border-radius: var(--border-radius-messages-small);
+  background: var(--color-background-secondary);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  resize: vertical;
+  outline: none;
+
+  &:focus {
+    border-color: var(--color-primary);
+  }
+}
+
+.previewBlock {
+  margin-top: 0.5rem;
+}
+
+.previewWrap {
+  position: relative;
+}
+
+.preview {
+  border-color: var(--color-primary);
+}
+
+// 悬停对照。绝对定位在译文框上方，不占布局，否则每次悬停整个输入区都会跳
+.tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 0.375rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--border-radius-default);
+  background: var(--color-background-compact-menu);
+  box-shadow: 0 2px 8px var(--color-default-shadow);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  z-index: 3;
+}
+
+.tooltipRow {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.tooltipLabel {
+  flex-shrink: 0;
+  width: 4.5rem;
+  color: var(--color-text-secondary);
+}
+
+.tooltipHint {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--color-borders);
+  color: var(--color-text-secondary);
+  opacity: 0.85;
+}
+
+.error {
+  margin-top: 0.375rem;
+  color: var(--color-error);
+  font-size: 0.8125rem;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.footerLabel {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.select {
+  padding: 0.1875rem 0.375rem;
+  border: 1px solid var(--color-borders-input);
+  border-radius: var(--border-radius-messages-small);
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+}
+
+.lock,
+.ghostButton,
+.primaryButton {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  border-radius: var(--border-radius-messages-small);
+}
+
+.lock {
+  padding: 0.25rem 0.625rem;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.lockOn {
+  background: var(--color-primary);
+  color: var(--color-white);
+}
+
+.spacer {
+  flex: 1;
+  min-width: 0.5rem;
+}
+
+.ghostButton {
+  padding: 0.375rem 0.875rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+.primaryButton {
+  padding: 0.375rem 1.125rem;
+  background: var(--color-primary);
+  color: var(--color-white);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-semibold);
+
+  &:disabled {
+    background: var(--color-background-secondary);
+    color: var(--color-text-secondary);
+    cursor: default;
+  }
+}
