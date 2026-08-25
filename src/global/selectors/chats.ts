@@ -280,10 +280,13 @@ export function selectShouldDetectChatLanguage<T extends GlobalState>(
 
   const { canTranslateChats } = global.settings.byKey;
 
-  const isPremium = selectIsCurrentUserPremium(global);
   const isSavedMessages = selectIsChatWithSelf(global, chatId);
 
-  return IS_TRANSLATION_SUPPORTED && canTranslateChats && isPremium && !isSavedMessages;
+  // im-hub 补丁：去掉 isPremium 判断。
+  // 上游这里要求 Premium 是因为翻译走 Telegram 官方接口、由他们付费；
+  // 我们的译文来自自己的翻译网关（DeepL/OpenAI/Claude），不消耗 Telegram
+  // 任何资源，所以这个门禁对本 fork 没有意义。
+  return IS_TRANSLATION_SUPPORTED && canTranslateChats && !isSavedMessages;
 }
 
 export function selectCanTranslateChat<T extends GlobalState>(

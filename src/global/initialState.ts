@@ -327,7 +327,9 @@ export const INITIAL_GLOBAL_STATE: GlobalState = {
       disallowedGifts: undefined,
       nonContactPeersPaidStars: 0,
       shouldHideReadMarks: false,
-      canTranslate: false,
+      // im-hub 补丁：默认打开。上游默认关是因为翻译要 Premium，
+      // 而这个产品存在的意义就是翻译，没有理由让用户先去设置里找开关。
+      canTranslate: true,
       canTranslateChats: true,
       doNotTranslate: [],
       translationTone: 'neutral',

@@ -21,12 +21,14 @@ import type {
   MediaContent,
 } from '../../../api/types';
 import type {
+  TranslationTone,
   ForwardMessagesParams,
   SendMessageParams,
   TextSummary,
   ThreadId,
 } from '../../../types';
 import type { MessageKey } from '../../../util/keys/messageKey';
+import { isImHubTranslationEnabled, translateBatch } from '../../../util/imhub';
 import type { RequiredGlobalActions } from '../../index';
 import type {
   ActionReturnType, GlobalState, ReportSection, TabArgs,
@@ -3462,6 +3464,15 @@ addActionHandler('translateMessages', (global, actions, payload): ActionReturnTy
 
   actions.markMessagesTranslationPending({ chatId, messageIds, toLanguageCode, tone });
 
+  // im-hub 补丁：译文走自己的翻译网关，不再调 Telegram 的 translateText。
+  //
+  // 上游那套渲染、批量、节流、缓存、pending 状态全部照用——我们只换掉
+  // "译文从哪来"这一件事。补丁面越小，跟上游合并时越不容易冲突。
+  if (isImHubTranslationEnabled()) {
+    void translateViaImHub(chatId, messageIds, toLanguageCode, tone);
+    return global;
+  }
+
   callApi('translateText', {
     chat,
     messageIds,
@@ -3471,6 +3482,45 @@ addActionHandler('translateMessages', (global, actions, payload): ActionReturnTy
 
   return global;
 });
+
+/**
+ * 取出这批消息的文本，送到 im-hub 翻译，再写回 global。
+ *
+ * 失败时必须把 pending 清掉：留着的话消息会永远停在"翻译中"，
+ * 用户分不清是还在排队还是已经挂了。
+ */
+async function translateViaImHub(
+  chatId: string,
+  messageIds: number[],
+  toLanguageCode: string,
+  tone?: TranslationTone,
+) {
+  let global = getGlobal();
+
+  // 按 id 顺序取文本，下标就是回填时的对应关系
+  const items = messageIds.map((id) => {
+    const message = selectChatMessage(global, chatId, id);
+    return { id, text: message?.content?.text?.text ?? '' };
+  });
+
+  const results = await translateBatch(items.map((i) => i.text), toLanguageCode);
+
+  global = getGlobal();
+  items.forEach((item, index) => {
+    const r = results?.[index];
+    global = updateMessageTranslation(global, chatId, item.id, toLanguageCode, {
+      isPending: false,
+      // 译文字段是 ApiFormattedText。不带 entities——原文里的粗体、链接、
+      // 提及等标注是按原文的字节偏移算的，译文长度完全不同，照搬过去会把
+      // 样式加到毫不相干的字上。
+      //
+      // 整批失败或单条失败都写 undefined：宁可不显示译文，也不要把空串
+      // 当成"翻译结果就是空的"渲染出来。
+      text: r && !r.failed && r.translated ? { text: r.translated } : undefined,
+    }, tone);
+  });
+  setGlobal(global);
+}
 
 addActionHandler('summarizeMessage', async (global, actions, payload): Promise<void> => {
   const {
