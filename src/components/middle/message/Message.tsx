@@ -44,6 +44,7 @@ import type {
   TranslationTone,
 } from '../../../types';
 import type { Signal } from '../../../util/signals';
+import { isImHubTranslationEnabled } from '../../../util/imhub';
 import { MAIN_THREAD_ID } from '../../../api/types';
 import { AudioOrigin } from '../../../types';
 
@@ -880,7 +881,12 @@ const Message = ({
   );
   useDetectChatLanguage(message, detectedLanguage, !shouldDetectChatLanguage, getIsMessageListReady);
 
-  const shouldTranslate = isMessageTranslatable(message, !requestedChatTranslationLanguage);
+  // im-hub 补丁：自己发的消息也要翻。上游在整聊天翻译时排除出站消息
+  // （自己写的不用翻给自己看），但这里员工发出去的是英文译文，
+  // 正需要气泡下那行中文来核对自己发的到底是什么。
+  const shouldTranslate = isMessageTranslatable(
+    message, !requestedChatTranslationLanguage || isImHubTranslationEnabled(),
+  );
 
   const isManualMessageTranslation = !requestedChatTranslationLanguage && requestedTranslationLanguage;
   const parsedManualTranslation = isManualMessageTranslation
