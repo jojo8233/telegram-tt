@@ -69,6 +69,7 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
   const [autoLang, setAutoLang] = useState<string | undefined>();
 
   const previewRef = useRef<HTMLTextAreaElement>();
+  const zhRef = useRef<HTMLTextAreaElement>();
   const backTimerRef = useRef<number | undefined>();
 
   const targetLang = lockedLang || autoLang || FALLBACK_LANG;
@@ -194,6 +195,9 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
     setIsBackPending(false);
     setIsHovering(false);
     window.clearTimeout(backTimerRef.current);
+    // 光标回到中文原文框，马上能打下一句。原生发送流程会把焦点抢回它自己的
+    // 输入框，所以要等两帧再夺回来——用 setTimeout 排在它之后
+    window.setTimeout(() => zhRef.current?.focus(), 50);
   }
 
   function handleToggleLock() {
@@ -235,9 +239,6 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
             <span className={styles.tooltipLabel}>回译成中文</span>
             <span>{isBackPending ? '回译中…' : (backTranslated ?? '回译不可用')}</span>
           </div>
-          <div className={styles.tooltipHint}>
-            对照关键信息：价格、数量、否定词、时间、人名
-          </div>
         </div>
       )}
       <div className={styles.label}>
@@ -245,6 +246,7 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
         中文原文
       </div>
       <textarea
+        ref={zhRef}
         className={styles.input}
         value={zh}
         placeholder="输入中文，回车翻译（Shift+回车换行）"
