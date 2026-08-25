@@ -184,10 +184,16 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
     if (!text) return;
     setDraft(text);
     onSend();
+    // 发完彻底复位到初始状态，不留任何已发送的痕迹。
+    // isHovering 也要清：回车发送时鼠标往往还悬在译文框上，框卸载后
+    // mouseleave 永远不会触发，悬停态会卡在 true
     setZh('');
     setPreview('');
     setPreviewSource('');
     setBackTranslated(undefined);
+    setIsBackPending(false);
+    setIsHovering(false);
+    window.clearTimeout(backTimerRef.current);
   }
 
   function handleToggleLock() {
@@ -216,8 +222,9 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
 
   return (
     <div className={styles.root} dir="auto">
-      {/* 对照框浮在整个面板之上：挂在译文框上的话会盖住上方的中文原文，
-          正是要对照的两样东西互相遮挡 */}
+      {/* 对照框挂在面板内部、译文框上方。面板现在位于原生输入框下方，
+          往面板外弹会盖住原生输入框；盖住自己的中文原文框没关系——
+          原文就在对照框第一行里 */}
       {isHovering && hasPreview && (
         <div className={styles.tooltip}>
           <div className={styles.tooltipRow}>
@@ -229,7 +236,7 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
             <span>{isBackPending ? '回译中…' : (backTranslated ?? '回译不可用')}</span>
           </div>
           <div className={styles.tooltipHint}>
-            回译顺不代表翻对了。要比的是关键信息有没有丢：价格、数量、否定词、时间、人名。
+            对照关键信息：价格、数量、否定词、时间、人名
           </div>
         </div>
       )}

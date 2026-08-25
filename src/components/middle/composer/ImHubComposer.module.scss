@@ -122,20 +122,23 @@ $radius-pill: 999px;
 
 // 悬停对照。浮在整个面板之上，不占布局——否则每次悬停输入区都会跳一下。
 // 深色底不透明：半透明会让下面的字透上来，两层字叠着什么都看不清。
+// 对照框盖在面板**自己**的中文原文区上，绝不越出面板上缘——面板上方就是
+// 原生输入框，弹出去会把它挡住（实际发生过）。盖住自己的原文框没关系，
+// 原文就在对照框第一行里。整体做小：这是速读用的浮层，不是正文。
 .tooltip {
   position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-radius: $radius-card;
+  top: 0.375rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: $radius-input;
   background: $ink-deep;
-  box-shadow: 0 14px 36px rgba(48, 51, 48, 0.18);
+  box-shadow: 0 8px 24px rgba(48, 51, 48, 0.22);
   color: $on-ink;
-  font-size: 0.75rem;
-  line-height: 1.75;
+  font-size: 0.6875rem;
+  line-height: 1.6;
   z-index: 10;
+  pointer-events: none;   // 只是看的，不该挡住底下输入框的点击
 }
 
 .tooltipRow {
@@ -151,7 +154,8 @@ $radius-pill: 999px;
 
 .tooltipLabel {
   flex-shrink: 0;
-  width: 3.5rem;
+  width: 4.125rem;
+  white-space: nowrap;
   color: $on-ink-faint;
 }
 
