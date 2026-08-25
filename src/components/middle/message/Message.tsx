@@ -1128,7 +1128,10 @@ const Message = ({
     // 客服要能同时看到两样：原文是证据，译文是理解。替换掉原文的话，
     // 员工引用、复制、核对客户原话都做不了。摘要（summary）保持上游行为。
     const forcedText = (isShowingSummary && summary?.text) || undefined;
-    const imHubTranslated = !isShowingSummary && requestedTranslationLanguage
+    // 手动逐条翻译和整聊天自动翻译走的是两个字段，哪个在用都要认——
+    // 只认手动那个的话，自动翻出来的译文根本进不了渲染
+    const imHubTranslated = !isShowingSummary
+      && (requestedTranslationLanguage || requestedChatTranslationLanguage)
       ? currentTranslatedText?.text.trim()
       : undefined;
     const imHubOriginal = textMessage.content.text?.text.trim();

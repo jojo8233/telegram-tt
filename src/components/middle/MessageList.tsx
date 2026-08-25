@@ -1478,7 +1478,10 @@ export default memo(withGlobal<OwnProps>(
     const canTranslate = imHubAuto
       || (selectCanTranslateChat(global, chatId) && !chatFullInfo?.isTranslationDisabled);
     const shouldAutoTranslate = imHubAuto || chat?.hasAutoTranslation;
-    const translationLanguage = selectTranslationLanguage(global);
+    // im-hub 补丁：自动翻译的目标固定为中文。上游跟界面语言走，而员工把界面
+    // 设成英文时，英文消息会被"翻译成英文"——看起来就是完全没翻译。
+    // 员工的工作语言是中文，这一点与界面语言无关。
+    const translationLanguage = isImHubTranslationEnabled() ? 'zh' : selectTranslationLanguage(global);
 
     const currentMessageList = selectCurrentMessageList(global);
     const isActive = currentMessageList && currentMessageList.chatId === chatId
