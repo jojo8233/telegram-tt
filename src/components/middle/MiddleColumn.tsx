@@ -83,6 +83,7 @@ import usePinnedMessage from './hooks/usePinnedMessage';
 import useFluidBackgroundFilter from './message/hooks/useFluidBackgroundFilter';
 
 import Composer from '../common/Composer';
+import ImHubComposer from './composer/ImHubComposer';
 import PrivacySettingsNoticeModal from '../common/PrivacySettingsNoticeModal.async';
 import SeenByModal from '../common/SeenByModal.async';
 import UnpinAllMessagesModal from '../common/UnpinAllMessagesModal.async';
@@ -640,6 +641,13 @@ function MiddleColumn({
                     editableInputCssSelector={EDITABLE_INPUT_CSS_SELECTOR}
                     inputId="message-input-text"
                   />
+                )}
+                {/* im-hub 补丁：翻译工作区。刻意放在原生输入框**下方**、
+                    并且在 Composer 组件外面——放进去会被塞进输入框那一行的
+                    flex 布局里，看起来像"输入框里面又冒出一个框"。
+                    它通过 imhub 的 draft bridge 驱动原生输入框。 */}
+                {renderingCanPost && !hasFooterActionBar && (
+                  <ImHubComposer chatId={renderingChatId!} />
                 )}
                 {isMessagingDisabled && (
                   <div className={messagingDisabledClassName}>

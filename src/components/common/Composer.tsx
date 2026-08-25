@@ -183,6 +183,7 @@ import useDraft from '../middle/composer/hooks/useDraft';
 import useEditing from '../middle/composer/hooks/useEditing';
 import useLoadLinkPreview from '../middle/composer/hooks/useLoadLinkPreview';
 import usePaidMessageConfirmation from '../middle/composer/hooks/usePaidMessageConfirmation';
+import { registerImHubDraftBridge } from '../../util/imhub';
 import useRichEditor from '../middle/composer/hooks/useRichEditor';
 import useVideoRecording from '../middle/composer/hooks/useVideoRecording';
 import useVoiceRecording from '../middle/composer/hooks/useVoiceRecording';
@@ -193,7 +194,6 @@ import BotCommandMenu from '../middle/composer/BotCommandMenu.async';
 import BotKeyboardMenu from '../middle/composer/BotKeyboardMenu';
 import BotMenuButton from '../middle/composer/BotMenuButton';
 import ComposerEmbeddedMessage from '../middle/composer/ComposerEmbeddedMessage';
-import ImHubComposer from '../middle/composer/ImHubComposer';
 import CustomSendMenu from '../middle/composer/CustomSendMenu.async';
 import DropArea, { DropAreaState } from '../middle/composer/DropArea.async';
 import MessageInput from '../middle/composer/MessageInput.async';
@@ -550,6 +550,7 @@ const Composer = ({
   const handleImHubSend = useLastCallback(() => {
     void handleSend();
   });
+
 
   const getImHubPeerText = useLastCallback((): string | undefined => {
     const byId = selectChatMessages(getGlobal(), chatId);
@@ -1648,6 +1649,18 @@ const Composer = ({
     handleSendCore(currentAttachments, isSilent, scheduledAt, scheduleRepeatPeriod);
   });
 
+// 翻译工作区在本组件外面渲染，用这条通道驱动原生输入框。
+  // 卸载时必须注销，否则切走的会话仍然握着一个指向已销毁编辑器的引用。
+  useEffect(() => {
+    if (!isInMessageList) return undefined;
+    registerImHubDraftBridge({
+      setDraft: setImHubDraft,
+      getDraft: getImHubDraft,
+      send: handleImHubSend,
+    });
+    return () => { registerImHubDraftBridge(undefined); };
+  }, [isInMessageList]);
+
   const handleSendWithConfirmation = useLastCallback((
     isSilent = false,
     scheduledAt?: number,
@@ -2668,13 +2681,6 @@ const Composer = ({
       />
       {isInMessageList && (
         <>
-          <ImHubComposer
-            chatId={chatId}
-            getPeerText={getImHubPeerText}
-            setDraft={setImHubDraft}
-            getDraft={getImHubDraft}
-            onSend={handleImHubSend}
-          />
           <ComposerEmbeddedMessage
             onClear={handleEmbeddedClear}
             onIsOpenChange={setIsEmbeddedMessageOpen}
