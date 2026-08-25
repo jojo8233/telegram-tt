@@ -596,3 +596,22 @@ PWA: Support system sharing menu
 [iOS] Startup: Add logs and signposts
 [Refactoring] Fix @typescript-eslint/await-thenable errors
 ```
+
+---
+
+## im-hub fork
+
+这份代码是 [im-hub](../im-hub) 的 Telegram 前端，不是纯上游。上面所有上游的
+风格约定继续适用，另外还有三条：
+
+**补丁面压到最小。** 这个 fork 要长期跟上游 rebase。所有对 im-hub 的调用都收在
+新增文件里（`src/util/imhub.ts`、`components/middle/composer/ImHubComposer.tsx`
+等）——上游改不到它们，冲突面为零。不得不改上游文件时，每处都写
+`im-hub 补丁：<原因>` 的注释，rebase 时才知道这行为什么在。
+
+**译文来自 im-hub 的翻译网关，不是 Telegram 的接口。** 所以上游那些
+Premium 门禁在这里没有意义，已经去掉了几处。再遇到新的门禁，同样处理并加注释。
+
+**`npx tsc --noEmit -p .` 必须零错误**，提交前跑一遍。
+
+改动清单看 git log，im-hub 侧的架构背景见 `../im-hub/CLAUDE.md`。
