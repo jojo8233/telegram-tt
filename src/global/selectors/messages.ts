@@ -29,6 +29,7 @@ import {
   WEB_APP_PLATFORM,
 } from '../../config';
 import { IS_TRANSLATION_SUPPORTED } from '../../util/browser/windowEnvironment';
+import { isImHubTranslationEnabled } from '../../util/imhub';
 import { isUserId } from '../../util/entities/ids';
 import { getCurrentTabId } from '../../util/establishMultitabRole';
 import { getMessageKey, isLocalMessageId } from '../../util/keys/messageKey';
@@ -1522,7 +1523,14 @@ export function selectCanTranslateMessage<T extends GlobalState>(
   // Separate translations are disabled when chat translation enabled
   const chatRequestedLanguage = selectRequestedChatTranslationLanguage(global, message.chatId, tabId);
 
-  return IS_TRANSLATION_SUPPORTED && isTranslationEnabled && canTranslateLanguage && isTranslatable
+  // im-hub 补丁：只要我们的翻译网关可用就放行，不再要求 isTranslationEnabled。
+  //
+  // 那个设置默认是关的，而且会持久化——已经用过的会话里存的就是 false，
+  // 改默认值也救不回来。这个产品存在的意义就是翻译，不该让用户先去设置里
+  // 找一个开关才看得到翻译入口。
+  const isEnabled = isTranslationEnabled || isImHubTranslationEnabled();
+
+  return IS_TRANSLATION_SUPPORTED && isEnabled && canTranslateLanguage && isTranslatable
     && !chatRequestedLanguage;
 }
 

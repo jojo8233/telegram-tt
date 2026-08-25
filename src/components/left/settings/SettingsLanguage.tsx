@@ -56,7 +56,9 @@ const SettingsLanguage: FC<OwnProps & StateProps> = ({
   const [selectedLanguage, setSelectedLanguage] = useState<string>(language);
   const [isLoading, markIsLoading, unmarkIsLoading] = useFlag();
 
-  const canTranslateChatsEnabled = isCurrentUserPremium && canTranslateChats;
+  // im-hub 补丁：去掉 isCurrentUserPremium。译文来自我们自己的翻译网关，
+  // 不消耗 Telegram 任何资源，这道门禁对本 fork 没有意义。
+  const canTranslateChatsEnabled = canTranslateChats;
 
   const lang = useOldLang();
 
