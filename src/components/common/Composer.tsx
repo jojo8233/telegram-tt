@@ -184,7 +184,6 @@ import useEditing from '../middle/composer/hooks/useEditing';
 import useLoadLinkPreview from '../middle/composer/hooks/useLoadLinkPreview';
 import usePaidMessageConfirmation from '../middle/composer/hooks/usePaidMessageConfirmation';
 import useRichEditor from '../middle/composer/hooks/useRichEditor';
-import useImHubSendReview from '../middle/composer/hooks/useImHubSendReview';
 import useVideoRecording from '../middle/composer/hooks/useVideoRecording';
 import useVoiceRecording from '../middle/composer/hooks/useVoiceRecording';
 
@@ -194,7 +193,7 @@ import BotCommandMenu from '../middle/composer/BotCommandMenu.async';
 import BotKeyboardMenu from '../middle/composer/BotKeyboardMenu';
 import BotMenuButton from '../middle/composer/BotMenuButton';
 import ComposerEmbeddedMessage from '../middle/composer/ComposerEmbeddedMessage';
-import ImHubSendReview from '../middle/composer/ImHubSendReview';
+import ImHubComposer from '../middle/composer/ImHubComposer';
 import CustomSendMenu from '../middle/composer/CustomSendMenu.async';
 import DropArea, { DropAreaState } from '../middle/composer/DropArea.async';
 import MessageInput from '../middle/composer/MessageInput.async';
@@ -522,8 +521,6 @@ const Composer = ({
   const oldLang = useOldLang();
   const lang = useLang();
   const richEditor = useRichEditor();
-  // im-hub 补丁：发送前译文校对
-  const imHubReview = useImHubSendReview();
 
   /**
    * 取客户最近一条消息的文字，用来判断发送前该翻成什么语言。
@@ -531,6 +528,17 @@ const Composer = ({
    * 从最新往回找，跳过自己发的和没有文字的（图片、贴纸、语音）。
    * 找不到就返回 undefined，由 hook 退回默认目标语言。
    */
+  /**
+   * 把校对好的译文交给原生发送流程。
+   *
+   * 不自己去调 sendMessage：原生这条路上还有限流、字数限制、回复引用、
+   * 定时发送、静默发送等一整套逻辑，绕过去等于把它们全丢了。
+   */
+  const handleImHubSend = useLastCallback((text: string) => {
+    richEditor.replaceValue(buildRichMessageFromFormatted({ text }));
+    void handleSend();
+  });
+
   const getImHubPeerText = useLastCallback((): string | undefined => {
     const byId = selectChatMessages(getGlobal(), chatId);
     if (!byId) return undefined;
@@ -1586,17 +1594,6 @@ const Composer = ({
   ) => {
     if (!validateEphemeralReply()) return;
 
-    // im-hub 补丁：发送前译文校对。
-    // 第一次回车不发出去，而是翻成客户的语言写回输入框；第二次回车才真的发。
-    // 只拦纯文字消息——带附件时输入框里的是图注，走的是另一条路径。
-    if (!attachments.length && !activeVoiceRecording && !activeVideoRecording) {
-      const held = await imHubReview.shouldHoldForReview(
-        () => richEditor.getAsFormatted(),
-        (text) => { richEditor.replaceValue(buildRichMessageFromFormatted({ text })); },
-        () => getImHubPeerText(),
-      );
-      if (held) return;
-    }
 
     if (!currentMessageList && !storyId) {
       return;
@@ -2659,7 +2656,11 @@ const Composer = ({
       />
       {isInMessageList && (
         <>
-          <ImHubSendReview review={imHubReview.review} onDismiss={imHubReview.dismiss} />
+          <ImHubComposer
+            chatId={chatId}
+            getPeerText={getImHubPeerText}
+            onSend={handleImHubSend}
+          />
           <ComposerEmbeddedMessage
             onClear={handleEmbeddedClear}
             onIsOpenChange={setIsEmbeddedMessageOpen}

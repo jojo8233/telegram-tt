@@ -64,6 +64,7 @@ import {
 } from '../../global/selectors/threads';
 import animateScroll, { isAnimatingScroll, restartCurrentScrollAnimation } from '../../util/animateScroll';
 import { IS_FIREFOX } from '../../util/browser/windowEnvironment';
+import { isImHubTranslationEnabled } from '../../util/imhub';
 import buildClassName from '../../util/buildClassName';
 import { isUserId } from '../../util/entities/ids';
 import { buildCollectionByKey } from '../../util/iteratees';
@@ -1468,8 +1469,15 @@ export default memo(withGlobal<OwnProps>(
     const isAppConfigLoaded = global.isAppConfigLoaded;
 
     const monoforumChannelId = selectMonoforumChannel(global, chatId)?.id;
-    const canTranslate = selectCanTranslateChat(global, chatId) && !chatFullInfo?.isTranslationDisabled;
-    const shouldAutoTranslate = chat?.hasAutoTranslation;
+    // im-hub 补丁：只要翻译网关可用就开自动翻译。
+    //
+    // 上游这两个条件都指望不上：canTranslate 要 chat.detectedLanguage，而那一栏
+    // 全代码库无人写入；hasAutoTranslation 是 Telegram 的付费能力。
+    // 结果就是员工每读一条外语消息都要右键→翻译→选语言，一天几百条根本没法用。
+    const imHubAuto = isImHubTranslationEnabled() && !chatFullInfo?.isTranslationDisabled;
+    const canTranslate = imHubAuto
+      || (selectCanTranslateChat(global, chatId) && !chatFullInfo?.isTranslationDisabled);
+    const shouldAutoTranslate = imHubAuto || chat?.hasAutoTranslation;
     const translationLanguage = selectTranslationLanguage(global);
 
     const currentMessageList = selectCurrentMessageList(global);
