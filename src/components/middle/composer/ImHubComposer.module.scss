@@ -32,24 +32,26 @@ $radius-card: 1.625rem;   // 26px
 $radius-input: 1.25rem;   // 20px
 $radius-pill: 999px;
 
-// 它在原生输入框**下方**，是一个独立区域，不是输入框的一部分。
-// 上方留出明显间距、自带边框和底色，视觉上必须一眼能和输入框分开——
-// 贴在一起就会又变成"输入框里面冒出来的框"。
+// 它渲染在 .middle-column-footer 里、<Composer /> 之后。footer 是一行 flex，
+// 不处理的话两者会左右并排（实际就发生过：面板浮到了聊天区右侧）。
+// 让 footer 允许换行，面板占满一整行并靠后排——自然落到输入框正下方。
+:global(.middle-column-footer) {
+  flex-wrap: wrap;
+}
+
 .root {
   position: relative;
-  // 跟着原生输入框的左右边距走，不要顶满整列
-  margin: 0.75rem auto 0.5rem;
+  order: 99;          // 排在 Composer 之后，换行后即是"正下方"
+  width: 100%;        // 占满一整行，强制换行
+  flex-shrink: 0;     // 长会话里输入区不该被挤没
+  margin: 0.375rem 0 0.5rem;
   padding: 1rem;
-  max-width: var(--composer-max-width, 45.5rem);
-  width: 100%;
   background: $card;
   border: 1px solid $border;
   border-radius: $radius-card;
   box-shadow: 0 4px 14px rgba(48, 51, 48, 0.05);
   color: $text;
   font-size: 0.9375rem;
-  // 长会话里输入区不该被挤没
-  flex-shrink: 0;
 }
 
 .label {

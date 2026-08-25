@@ -1124,29 +1124,42 @@ const Message = ({
       );
     }
 
-    const forcedText = (isShowingSummary && summary?.text)
-      || (requestedTranslationLanguage ? currentTranslatedText : undefined);
+    // im-hub 补丁：译文不再**替换**原文，而是渲染在原文下方（横线分隔）。
+    // 客服要能同时看到两样：原文是证据，译文是理解。替换掉原文的话，
+    // 员工引用、复制、核对客户原话都做不了。摘要（summary）保持上游行为。
+    const forcedText = (isShowingSummary && summary?.text) || undefined;
+    const imHubTranslated = !isShowingSummary && requestedTranslationLanguage
+      ? currentTranslatedText?.text.trim()
+      : undefined;
+    const imHubOriginal = textMessage.content.text?.text.trim();
+    // 客户本来就说中文时译文与原文相同，重复显示两遍没有意义
+    const imHubShowTranslation = Boolean(imHubTranslated && imHubTranslated !== imHubOriginal);
     return (
-      <MessageText
-        messageOrStory={textMessage}
-        forcedText={forcedText}
-        isForAnimation={isForAnimation}
-        focusedQuote={focusedQuote}
-        focusedQuoteOffset={focusedQuoteOffset}
-        emojiSize={emojiSize}
-        highlight={highlight}
-        isProtected={isProtected}
-        observeIntersectionForLoading={observeIntersectionForLoading}
-        observeIntersectionForPlaying={observeIntersectionForPlaying}
-        withTranslucentThumbs={isCustomShape}
-        isInSelectMode={isInSelectMode}
-        canBeEmpty={hasFactCheck || isTypingDraft}
-        maxTimestamp={maxTimestamp}
-        threadId={threadId}
-        shouldAnimateTyping={isTypingDraft}
-        canAnimateTextStreaming={canAnimateTextStreaming}
-        onTypingAnimationEnd={handleTypingAnimationEnd}
-      />
+      <>
+        <MessageText
+          messageOrStory={textMessage}
+          forcedText={forcedText}
+          isForAnimation={isForAnimation}
+          focusedQuote={focusedQuote}
+          focusedQuoteOffset={focusedQuoteOffset}
+          emojiSize={emojiSize}
+          highlight={highlight}
+          isProtected={isProtected}
+          observeIntersectionForLoading={observeIntersectionForLoading}
+          observeIntersectionForPlaying={observeIntersectionForPlaying}
+          withTranslucentThumbs={isCustomShape}
+          isInSelectMode={isInSelectMode}
+          canBeEmpty={hasFactCheck || isTypingDraft}
+          maxTimestamp={maxTimestamp}
+          threadId={threadId}
+          shouldAnimateTyping={isTypingDraft}
+          canAnimateTextStreaming={canAnimateTextStreaming}
+          onTypingAnimationEnd={handleTypingAnimationEnd}
+        />
+        {imHubShowTranslation && (
+          <div className="imhub-translation" dir="auto">{imHubTranslated}</div>
+        )}
+      </>
     );
   }
 
