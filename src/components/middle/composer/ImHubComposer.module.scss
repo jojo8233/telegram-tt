@@ -1,15 +1,46 @@
 // 发送前译文校对区。
 //
-// 做成贴在原生输入框正上方的一整条，不是浮在上面的卡片：加了阴影和圆角之后
-// 它看起来像"输入框里面又冒出一个框"，而它其实是这个产品的主输入区。
-// 颜色全部走 Telegram 的主题变量，免得深色模式下变成一块刺眼的白。
+// 配色和形状**照抄 im-hub 的设计令牌**，不用 Telegram 的主题变量——这两套
+// 视觉语言完全不同（Telegram 是蓝色小圆角，im-hub 是墨黑+柠檬绿+大圆角），
+// 混在一起会像两个应用拼起来的。
+//
+// 值是硬编码的，因为这个 fork 引不到 im-hub 的 theme.ts。改色板时两边要一起改。
+// 对应关系见 im-hub 的 packages/desktop/src/renderer/theme.ts。
+
+// ── im-hub 令牌 ──
+$card: #fafbf9;
+$white: #ffffff;
+$surface: #edefeb;
+$surface-hover: #e7e9e5;
+$border: #e4e6e2;
+$border-strong: #d6d9d2;
+$text: #303330;
+$text-muted: #6f746f;
+$text-faint: #969b96;
+$ink: #292b29;
+$ink-deep: #232523;
+$on-ink: #f1f2ef;
+$on-ink-faint: rgba(241, 242, 239, 0.46);
+$on-ink-line: rgba(241, 242, 239, 0.15);
+$lime: #b8e85a;
+$lime-deep: #a3d446;
+$lime-soft: #eaf3d9;
+$on-lime: #2c3025;
+
+// 大圆角是这套视觉的识别点，收小就变回普通后台了
+$radius-card: 1.625rem;   // 26px
+$radius-input: 1.25rem;   // 20px
+$radius-pill: 999px;
+
 .root {
   position: relative;
-  margin: 0;
-  padding: 0.5rem 0.75rem 0.625rem;
-  background: var(--color-background);
-  border-top: 1px solid var(--color-borders);
-  border-radius: var(--border-radius-default) var(--border-radius-default) 0 0;
+  margin: 0.5rem 0 0.25rem;
+  padding: 1rem;
+  background: $card;
+  border: 1px solid $border;
+  border-radius: $radius-card;
+  box-shadow: 0 4px 14px rgba(48, 51, 48, 0.05);
+  color: $text;
   font-size: 0.9375rem;
 }
 
@@ -17,129 +48,145 @@
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  margin-bottom: 0.25rem;
-  font-size: 0.8125rem;
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  margin-bottom: 0.3125rem;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  color: $text-faint;
 }
 
 .labelHint {
-  font-weight: var(--font-weight-normal);
-  opacity: 0.8;
+  font-weight: 400;
+  color: $text-faint;
 }
 
 .dot {
   width: 0.375rem;
   height: 0.375rem;
   border-radius: 50%;
-  background: var(--color-text-secondary);
+  background: $text-faint;
   flex-shrink: 0;
 }
 
 .dotAccent {
-  background: var(--color-primary);
+  background: $lime-deep;
 }
 
 .input {
   width: 100%;
-  min-height: 2.5rem;
-  max-height: 7rem;
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--color-borders-input);
-  border-radius: var(--border-radius-messages-small);
-  background: var(--color-background-secondary);
-  color: var(--color-text);
+  min-height: 3.625rem;
+  max-height: 8rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid $border;
+  border-radius: $radius-input;
+  background: $white;
+  color: $text;
   font-family: inherit;
-  font-size: 0.9375rem;
-  line-height: 1.4;
-  resize: vertical;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  resize: none;
   outline: none;
 
+  &::placeholder {
+    color: $text-faint;
+  }
+
   &:focus {
-    border-color: var(--color-primary);
+    border-color: $lime-deep;
+    box-shadow: 0 0 0 3px $lime-soft;
   }
 }
 
+// 译文框是这一块里最该被看到的东西，用浅绿把它托起来
+.preview {
+  background: $lime-soft;
+  border-color: $lime-deep;
+}
+
 .previewBlock {
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .previewWrap {
   position: relative;
 }
 
-.preview {
-  border-color: var(--color-primary);
-}
-
-// 悬停对照。绝对定位在整个面板上方，不占布局——否则每次悬停输入区都会跳一下。
-//
-// 背景必须是不透明的实色：半透明会让底下的原文透上来，而这里正是要读文字的
-// 地方，两层字叠在一起等于什么都看不清。
+// 悬停对照。浮在整个面板之上，不占布局——否则每次悬停输入区都会跳一下。
+// 深色底不透明：半透明会让下面的字透上来，两层字叠着什么都看不清。
 .tooltip {
   position: absolute;
   bottom: 100%;
   left: 0;
   right: 0;
-  margin-bottom: 0.25rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: var(--border-radius-default);
-  background: var(--color-background);
-  border: 1px solid var(--color-borders);
-  box-shadow: 0 4px 16px var(--color-default-shadow);
-  color: var(--color-text);
-  font-size: 0.8125rem;
-  line-height: 1.5;
+  margin-bottom: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: $radius-card;
+  background: $ink-deep;
+  box-shadow: 0 14px 36px rgba(48, 51, 48, 0.18);
+  color: $on-ink;
+  font-size: 0.75rem;
+  line-height: 1.75;
   z-index: 10;
 }
 
 .tooltipRow {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 0.25rem;
+}
+
+.tooltipRow + .tooltipRow {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid $on-ink-line;
 }
 
 .tooltipLabel {
   flex-shrink: 0;
-  width: 4.5rem;
-  color: var(--color-text-secondary);
+  width: 3.5rem;
+  color: $on-ink-faint;
 }
 
 .tooltipHint {
-  margin-top: 0.375rem;
+  margin-top: 0.5rem;
   padding-top: 0.375rem;
-  border-top: 1px solid var(--color-borders);
-  color: var(--color-text-secondary);
-  opacity: 0.85;
+  border-top: 1px solid $on-ink-line;
+  color: $on-ink-faint;
+  line-height: 1.6;
 }
 
 .error {
-  margin-top: 0.375rem;
-  color: var(--color-error);
-  font-size: 0.8125rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.875rem;
+  background: #f8ecea;
+  color: #c2554b;
+  font-size: 0.75rem;
 }
 
 .footer {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  margin-top: 0.5rem;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid $border;
   flex-wrap: wrap;
 }
 
 .footerLabel {
-  font-size: 0.8125rem;
-  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+  color: $text-faint;
   white-space: nowrap;
 }
 
 .select {
-  padding: 0.1875rem 0.375rem;
-  border: 1px solid var(--color-borders-input);
-  border-radius: var(--border-radius-messages-small);
-  background: var(--color-background);
-  color: var(--color-text);
-  font-size: 0.8125rem;
+  padding: 0.3125rem 0.5rem;
+  border: 1px solid $border;
+  border-radius: $radius-pill;
+  background: $white;
+  color: $text;
+  font-family: inherit;
+  font-size: 0.6875rem;
+  outline: none;
 }
 
 .lock,
@@ -149,19 +196,25 @@
   cursor: pointer;
   font-family: inherit;
   white-space: nowrap;
-  border-radius: var(--border-radius-messages-small);
+  flex-shrink: 0;
+  border-radius: $radius-pill;
+  transition: background 0.12s ease, opacity 0.12s ease;
 }
 
 .lock {
-  padding: 0.25rem 0.625rem;
-  background: var(--color-background-secondary);
-  color: var(--color-text-secondary);
-  font-size: 0.8125rem;
+  padding: 0.3125rem 0.75rem;
+  border: 1px solid $border;
+  background: $white;
+  color: $text-muted;
+  font-size: 0.6875rem;
+  font-weight: 800;
 }
 
+// 锁上了才用纯绿——小面积的强调色，正好和自动状态区分开
 .lockOn {
-  background: var(--color-primary);
-  color: var(--color-white);
+  border-color: transparent;
+  background: $lime;
+  color: $on-lime;
 }
 
 .spacer {
@@ -169,12 +222,17 @@
   min-width: 0.5rem;
 }
 
+// 「翻译」是次要操作，退成无边框；发送才是唯一明显的主操作
 .ghostButton {
-  padding: 0.375rem 0.875rem;
+  padding: 0.5625rem 1rem;
   background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  font-weight: var(--font-weight-medium);
+  color: $text-muted;
+  font-size: 0.8125rem;
+  font-weight: 700;
+
+  &:hover:not(:disabled) {
+    background: $surface-hover;
+  }
 
   &:disabled {
     opacity: 0.5;
@@ -183,15 +241,20 @@
 }
 
 .primaryButton {
-  padding: 0.375rem 1.125rem;
-  background: var(--color-primary);
-  color: var(--color-white);
-  font-size: 0.875rem;
-  font-weight: var(--font-weight-semibold);
+  padding: 0.5625rem 1.5rem;
+  background: $ink;
+  color: $lime;
+  font-size: 0.8125rem;
+  font-weight: 800;
 
+  &:hover:not(:disabled) {
+    background: $ink-deep;
+  }
+
+  // 不可用时不要只是调半透明——浅底上会糊成一坨脏墨色，看起来像坏了而不是禁用
   &:disabled {
-    background: var(--color-background-secondary);
-    color: var(--color-text-secondary);
+    background: $surface;
+    color: $text-faint;
     cursor: default;
   }
 }
