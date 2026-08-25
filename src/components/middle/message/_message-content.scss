@@ -1171,3 +1171,18 @@ blockquote, .blockquote {
     background-color: transparent;
   }
 }
+
+/* im-hub 补丁：气泡内的译文块。原文在上，横线分隔，译文在下——
+   出入站气泡都走这一份，颜色继承气泡本身的文字色，只压一点透明度，
+   深浅主题和自己/对方的气泡底色都不用单独适配。 */
+.imhub-translation {
+  margin-top: 0.3125rem;
+  padding-top: 0.3125rem;
+  border-top: 1px solid var(--color-borders, rgba(0, 0, 0, 0.15));
+  font-size: calc(var(--message-text-size, 1rem) - 0.0625rem);
+  line-height: 1.375;
+  opacity: 0.85;
+  white-space: pre-wrap;
+  word-break: break-word;
+  unicode-bidi: plaintext;
+}
