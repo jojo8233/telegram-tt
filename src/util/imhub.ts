@@ -22,6 +22,88 @@ interface BatchResult {
   failed: boolean;
 }
 
+const TELEGRAM_SERVER_MESSAGE_ID_MAX = 2_147_483_647;
+const TELEGRAM_CHAT_ID_MIN = -(1n << 63n);
+const TELEGRAM_CHAT_ID_MAX = (1n << 63n) - 1n;
+const CANONICAL_INTEGER = /^-?(?:0|[1-9]\d*)$/;
+const CANONICAL_LOCAL_ID = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
+const NEGATIVE_ZERO = /^-0(?:\.0+)?$/;
+
+export type ImHubTelegramMessageId = {
+  chatId: string;
+} & ({
+  kind: 'server';
+  serverMessageId: string;
+} | {
+  kind: 'temporary';
+  source: 'telegram-tt';
+  localMessageId: string;
+});
+
+function normalizeTelegramChatId(chatId: string): string {
+  if (!CANONICAL_INTEGER.test(chatId)) throw new Error('Telegram chat id 格式无效');
+  const value = BigInt(chatId);
+  if (value === 0n || value < TELEGRAM_CHAT_ID_MIN || value > TELEGRAM_CHAT_ID_MAX) {
+    throw new Error('Telegram chat id 超出范围');
+  }
+  const normalized = value.toString();
+  if (normalized !== chatId) throw new Error('Telegram chat id 不是规范十进制');
+  return normalized;
+}
+
+/**
+ * telegram-tt 的服务器消息 id 就是 MTProto int32；本地回显则使用小数 id。
+ * im-hub 以 chatId:serverMessageId 去重，本地 id 必须进入独立命名空间，等
+ * updateMessageSendSucceeded 到达后再 remap，不能把小数截断成服务器 id。
+ */
+export function buildImHubTelegramMessageId(chatId: string, messageId: number): string {
+  const normalizedChatId = normalizeTelegramChatId(chatId);
+  if (Number.isSafeInteger(messageId) && messageId > 0) {
+    if (messageId > TELEGRAM_SERVER_MESSAGE_ID_MAX) throw new Error('Telegram message id 超出范围');
+    return `${normalizedChatId}:${messageId}`;
+  }
+
+  if (!Number.isFinite(messageId) || Math.abs(messageId) > Number.MAX_SAFE_INTEGER) {
+    throw new Error('Telegram 本地 message id 无效');
+  }
+  const localMessageId = String(messageId);
+  if (!CANONICAL_LOCAL_ID.test(localMessageId) || NEGATIVE_ZERO.test(localMessageId)) {
+    throw new Error('Telegram 本地 message id 格式无效');
+  }
+  return `${normalizedChatId}:temp:telegram-tt:${localMessageId}`;
+}
+
+export function parseImHubTelegramMessageId(messageId: string): ImHubTelegramMessageId | undefined {
+  const parts = messageId.split(':');
+  try {
+    if (parts.length === 2) {
+      const [rawChatId, rawServerMessageId] = parts;
+      if (!rawChatId || !rawServerMessageId || !CANONICAL_INTEGER.test(rawServerMessageId)) return undefined;
+      const serverMessageId = Number(rawServerMessageId);
+      if (!Number.isSafeInteger(serverMessageId)
+        || serverMessageId <= 0
+        || serverMessageId > TELEGRAM_SERVER_MESSAGE_ID_MAX) return undefined;
+      const chatId = normalizeTelegramChatId(rawChatId);
+      if (`${chatId}:${serverMessageId}` !== messageId) return undefined;
+      return { chatId, kind: 'server', serverMessageId: String(serverMessageId) };
+    }
+
+    if (parts.length === 4 && parts[1] === 'temp' && parts[2] === 'telegram-tt') {
+      const [rawChatId, , , localMessageId] = parts;
+      if (!rawChatId
+        || !localMessageId
+        || !CANONICAL_LOCAL_ID.test(localMessageId)
+        || NEGATIVE_ZERO.test(localMessageId)) return undefined;
+      const chatId = normalizeTelegramChatId(rawChatId);
+      if (`${chatId}:temp:telegram-tt:${localMessageId}` !== messageId) return undefined;
+      return { chatId, kind: 'temporary', source: 'telegram-tt', localMessageId };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 declare global {
   interface Window {
     __IM_HUB__?: ImHubConfig;
