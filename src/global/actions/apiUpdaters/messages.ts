@@ -15,6 +15,11 @@ import { areDeepEqual } from '../../../util/areDeepEqual';
 import { isUserId } from '../../../util/entities/ids';
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
 import {
+  registerImHubSendLocalMessage,
+  rejectImHubSendLocalMessage,
+  resolveImHubSendLocalMessage,
+} from '../../../util/imhub';
+import {
   buildCollectionByKey, omit, unique,
 } from '../../../util/iteratees';
 import { getMessageKey, isLocalMessageId } from '../../../util/keys/messageKey';
@@ -268,8 +273,10 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
 
     case 'newMessage': {
       const {
-        chatId, id, message, shouldForceReply, wasDrafted, poll, webPages,
+        chatId, id, message, shouldForceReply, wasDrafted, poll, webPages, imHubAttemptId,
       } = update;
+      // im-hub 补丁：本地回显是稳定 attempt 与 Telegram 最终消息之间的精确关联点。
+      if (imHubAttemptId) registerImHubSendLocalMessage(imHubAttemptId, chatId, id);
       const chat = selectChat(global, chatId);
       const isLocal = isMessageLocal(message);
       const threadId = selectThreadIdFromMessage(global, message) || MAIN_THREAD_ID;
@@ -512,8 +519,10 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
 
     case 'newScheduledMessage': {
       const {
-        chatId, id, message, poll, webPages,
+        chatId, id, message, poll, webPages, imHubAttemptId,
       } = update;
+      // im-hub 补丁：定时发送沿用同一关联，不改变 Telegram 原生处理。
+      if (imHubAttemptId) registerImHubSendLocalMessage(imHubAttemptId, chatId, id);
 
       global = updateWithLocalMedia(global, chatId, id, true, message, true);
 
@@ -732,6 +741,8 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       const {
         chatId, localId, message, poll, webPages,
       } = update;
+      // im-hub 补丁：只有服务器最终 id 到达后，typed bridge 才能报告成功。
+      resolveImHubSendLocalMessage(chatId, localId, message.id);
 
       global = updateListedAndViewportIds(global, message);
 
@@ -811,6 +822,8 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       const {
         chatId, localId, message, poll, webPages,
       } = update;
+      // im-hub 补丁：定时发送也只接受 Telegram 最终 id。
+      resolveImHubSendLocalMessage(chatId, localId, message.id);
       const scheduledIds = selectScheduledIds(global, chatId, MAIN_THREAD_ID) || [];
       global = replaceThreadLocalStateParam(
         global, chatId, MAIN_THREAD_ID, 'scheduledIds', [...scheduledIds, message.id],
@@ -1162,6 +1175,8 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
 
     case 'updateMessageSendFailed': {
       const { chatId, localId, error } = update;
+      // im-hub 补丁：错误正文不进入桥接，只上报脱敏的明确失败状态。
+      rejectImHubSendLocalMessage(chatId, localId);
 
       if (error.match(/CHAT_SEND_.+?FORBIDDEN/)) {
         Object.values(global.byTabId).forEach(({ id: tabId }) => {
@@ -1176,6 +1191,8 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
 
     case 'updateScheduledMessageSendFailed': {
       const { chatId, localId, error } = update;
+      // im-hub 补丁：错误正文不进入桥接，只上报脱敏的明确失败状态。
+      rejectImHubSendLocalMessage(chatId, localId);
 
       if (error.match(/CHAT_SEND_.+?FORBIDDEN/)) {
         Object.values(global.byTabId).forEach(({ id: tabId }) => {

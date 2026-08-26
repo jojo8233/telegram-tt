@@ -92,7 +92,7 @@ const App = ({
       if (currentUserId) reportImHubAccountIdentity(currentUserId);
     } else if (authState) {
       // 初始 authState 尚未知时不报 signed-out，避免误清仍在恢复中的持久化登录分区
-      reportImHubAccountIdentity(null);
+      reportImHubAccountIdentity(undefined);
     }
   }, [authState, currentUserId]);
 

@@ -246,6 +246,8 @@ export type ApiUpdateNewScheduledMessage = {
   wasDrafted?: boolean;
   poll?: ApiMessagePoll;
   webPages?: ApiWebPage[];
+  /** im-hub 补丁：renderer 用它把本地回显绑定到稳定发送 attempt。 */
+  imHubAttemptId?: string;
 };
 
 export type ApiUpdateNewMessage = {
@@ -257,6 +259,8 @@ export type ApiUpdateNewMessage = {
   wasDrafted?: boolean;
   poll?: ApiMessagePoll;
   webPages?: ApiWebPage[];
+  /** im-hub 补丁：renderer 用它把本地回显绑定到稳定发送 attempt。 */
+  imHubAttemptId?: string;
 };
 
 export type ApiUpdateNewEphemeralMessage = {

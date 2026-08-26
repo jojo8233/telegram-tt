@@ -1,3 +1,5 @@
+import { getTranslationFn } from './localization';
+
 /**
  * 与 im-hub 服务端的对接层。
  *
@@ -16,16 +18,75 @@ interface BatchResult {
   failed: boolean;
 }
 
+type ImHubComposerCommand = {
+  protocolVersion: 2;
+  requestId: string;
+  contextRevision: number;
+  platformConversationId: string;
+} & ({
+  type: 'composer.set-draft';
+  text: string;
+} | {
+  type: 'composer.get-draft';
+} | {
+  type: 'composer.send';
+  attemptId: string;
+});
+
+type ImHubHostCommand = ImHubComposerCommand | {
+  protocolVersion: 2;
+  type: 'bridge.request-state';
+} | {
+  protocolVersion: 2;
+  type: 'event.ack';
+  eventId: string;
+  accepted: boolean;
+  retryable: boolean;
+};
+
+type ImHubGuestEvent = {
+  protocolVersion: 2;
+  type: 'bridge.ready' | 'account.signed-out';
+} | {
+  protocolVersion: 2;
+  type: 'account.identity';
+  platformAccountExternalId: string;
+} | {
+  protocolVersion: 2;
+  type: 'context.changed';
+  contextRevision: number;
+  context: {
+    platformConversationId: string;
+    contactExternalId: string;
+    contactDisplayName: string | null;
+  } | null;
+} | {
+  protocolVersion: 2;
+  type: 'composer.state';
+  contextRevision: number;
+  platformConversationId: string;
+  draft: string;
+  canSend: boolean;
+} | {
+  protocolVersion: 2;
+  type: 'command.result';
+  requestId: string;
+  command: ImHubComposerCommand['type'];
+  contextRevision: number;
+  ok: boolean;
+  attemptId?: string;
+  draft?: string;
+  platformMessageId?: string;
+  error?: {
+    code: string;
+    message: string;
+  };
+};
+
 interface ImHubNativeBridge {
   protocolVersion: number;
-  emit(event: {
-    protocolVersion: 2;
-    type: 'bridge.ready' | 'account.signed-out';
-  } | {
-    protocolVersion: 2;
-    type: 'account.identity';
-    platformAccountExternalId: string;
-  }): void;
+  emit(event: ImHubGuestEvent): void;
+  onCommand(listener: (command: ImHubHostCommand) => void): void;
   translateBatch(input: {
     texts: string[];
     targetLang: string;
@@ -40,6 +101,10 @@ const TELEGRAM_CHAT_ID_MAX = (1n << 63n) - 1n;
 const CANONICAL_INTEGER = /^-?(?:0|[1-9]\d*)$/;
 const CANONICAL_LOCAL_ID = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const NEGATIVE_ZERO = /^-0(?:\.0+)?$/;
+const SEND_ATTEMPT_SEAL_DELAY_MS = 250;
+const MAX_COMPLETED_SEND_ATTEMPTS = 100;
+// Bridge v2 的 JSON 协议用 `null` 明确表示没有会话或展示名。
+const BRIDGE_NULL: null = JSON.parse('null');
 
 export type ImHubTelegramMessageId = {
   chatId: string;
@@ -122,30 +187,74 @@ declare global {
   }
 }
 
-/**
- * 翻译工作区与原生输入框之间的通道。
- *
- * 工作区渲染在 Composer 组件**外面**（原生输入框下方，见 MiddleColumn），
- * 拿不到 Composer 内部的 richEditor 和 handleSend，所以由 Composer 在挂载时
- * 把这三个动作登记进来。
- *
- * 用模块级单例而不是 React context：同一时刻只有一个会话的输入框是活的，
- * 而套一层 provider 要改 MiddleColumn 的结构，补丁面反而更大。
- */
-export interface ImHubDraftBridge {
+export interface ImHubComposerBridge {
+  platformConversationId: string;
+  contactExternalId: string;
+  contactDisplayName?: string;
   setDraft(text: string): void;
   getDraft(): string;
-  send(): void;
+  canSend(): boolean;
+  send(attemptId: string, canContinue: () => boolean): Promise<boolean>;
 }
 
-let draftBridge: ImHubDraftBridge | undefined;
+type ImHubSendLocalResult = {
+  status: 'pending' | 'succeeded' | 'failed';
+  platformMessageId?: string;
+};
 
-export function registerImHubDraftBridge(bridge: ImHubDraftBridge | undefined) {
-  draftBridge = bridge;
+type ImHubSendResult = {
+  ok: true;
+  platformMessageId: string;
+} | {
+  ok: false;
+  code: string;
+  message: string;
+};
+
+type ImHubSendAttempt = {
+  attemptId: string;
+  contextRevision: number;
+  platformConversationId: string;
+  chatId: string;
+  commands: Map<string, ImHubComposerCommand & { type: 'composer.send' }>;
+  localResults: Map<string, ImHubSendLocalResult>;
+  isSealed: boolean;
+  result?: ImHubSendResult;
+};
+
+let composerBridge: ImHubComposerBridge | undefined;
+let contextRevision = -1;
+let registeredNativeBridge: ImHubNativeBridge | undefined;
+const sendAttempts = new Map<string, ImHubSendAttempt>();
+const sendAttemptIdByLocalMessage = new Map<string, string>();
+
+export function registerImHubComposerBridge(bridge: ImHubComposerBridge): () => void {
+  ensureImHubCommandListener();
+  composerBridge = bridge;
+  contextRevision += 1;
+  reportImHubContext();
+  reportImHubComposerState();
+
+  return () => {
+    if (composerBridge !== bridge) return;
+    composerBridge = undefined;
+    contextRevision += 1;
+    reportImHubContext();
+  };
 }
 
-export function getImHubDraftBridge(): ImHubDraftBridge | undefined {
-  return draftBridge;
+export function reportImHubComposerState(): void {
+  const bridge = getImHubBridge();
+  const composer = composerBridge;
+  if (!bridge || !composer) return;
+  bridge.emit({
+    protocolVersion: 2,
+    type: 'composer.state',
+    contextRevision,
+    platformConversationId: composer.platformConversationId,
+    draft: composer.getDraft(),
+    canSend: composer.canSend(),
+  });
 }
 
 function getImHubBridge(): ImHubNativeBridge | undefined {
@@ -153,15 +262,16 @@ function getImHubBridge(): ImHubNativeBridge | undefined {
   return bridge?.protocolVersion === 2 ? bridge : undefined;
 }
 
-let reportedPlatformAccountExternalId: string | null = null;
+let reportedPlatformAccountExternalId: string | undefined;
 
 export function isImHubTranslationEnabled(): boolean {
   return getImHubBridge() !== undefined;
 }
 
-export function reportImHubAccountIdentity(currentUserId: string | null): void {
+export function reportImHubAccountIdentity(currentUserId?: string): void {
   const bridge = getImHubBridge();
   if (!bridge) return;
+  ensureImHubCommandListener();
   bridge.emit({ protocolVersion: 2, type: 'bridge.ready' });
   if (currentUserId) {
     reportedPlatformAccountExternalId = currentUserId;
@@ -170,9 +280,283 @@ export function reportImHubAccountIdentity(currentUserId: string | null): void {
       type: 'account.identity',
       platformAccountExternalId: currentUserId,
     });
-  } else if (reportedPlatformAccountExternalId !== null) {
-    reportedPlatformAccountExternalId = null;
+  } else if (reportedPlatformAccountExternalId !== undefined) {
+    reportedPlatformAccountExternalId = undefined;
     bridge.emit({ protocolVersion: 2, type: 'account.signed-out' });
+  }
+}
+
+export function registerImHubSendLocalMessage(
+  attemptId: string,
+  chatId: string,
+  localMessageId: number,
+): void {
+  const attempt = sendAttempts.get(attemptId);
+  if (!attempt || attempt.result || attempt.chatId !== chatId) return;
+  const localKey = buildImHubLocalMessageKey(chatId, localMessageId);
+  if (attempt.localResults.has(localKey)) return;
+  attempt.localResults.set(localKey, { status: 'pending' });
+  sendAttemptIdByLocalMessage.set(localKey, attemptId);
+}
+
+export function resolveImHubSendLocalMessage(
+  chatId: string,
+  localMessageId: number,
+  finalMessageId: number,
+): void {
+  const localKey = buildImHubLocalMessageKey(chatId, localMessageId);
+  const attemptId = sendAttemptIdByLocalMessage.get(localKey);
+  const attempt = attemptId ? sendAttempts.get(attemptId) : undefined;
+  if (!attempt || attempt.result) return;
+  try {
+    attempt.localResults.set(localKey, {
+      status: 'succeeded',
+      platformMessageId: buildImHubTelegramMessageId(chatId, finalMessageId),
+    });
+  } catch {
+    attempt.localResults.set(localKey, { status: 'failed' });
+  }
+  settleImHubSendAttempt(attempt);
+}
+
+export function rejectImHubSendLocalMessage(chatId: string, localMessageId: number): void {
+  const localKey = buildImHubLocalMessageKey(chatId, localMessageId);
+  const attemptId = sendAttemptIdByLocalMessage.get(localKey);
+  const attempt = attemptId ? sendAttempts.get(attemptId) : undefined;
+  if (!attempt || attempt.result) return;
+  attempt.localResults.set(localKey, { status: 'failed' });
+  settleImHubSendAttempt(attempt);
+}
+
+export function sealImHubSendAttempt(attemptId: string): void {
+  const attempt = sendAttempts.get(attemptId);
+  if (!attempt || attempt.result || attempt.isSealed) return;
+  setTimeout(() => {
+    if (attempt.result) return;
+    attempt.isSealed = true;
+    settleImHubSendAttempt(attempt);
+  }, SEND_ATTEMPT_SEAL_DELAY_MS);
+}
+
+function ensureImHubCommandListener(): void {
+  const bridge = getImHubBridge();
+  if (!bridge || registeredNativeBridge === bridge) return;
+  registeredNativeBridge = bridge;
+  bridge.onCommand((command) => {
+    if (command.type === 'bridge.request-state') {
+      reportImHubContext();
+      reportImHubComposerState();
+      return;
+    }
+    if (command.type === 'event.ack') return;
+    void handleImHubComposerCommand(command);
+  });
+}
+
+async function handleImHubComposerCommand(command: ImHubComposerCommand): Promise<void> {
+  const bridge = getImHubBridge();
+  const composer = composerBridge;
+  if (!bridge) return;
+  if (!composer
+    || command.contextRevision !== contextRevision
+    || command.platformConversationId !== composer.platformConversationId) {
+    reportImHubCommandFailure(command, 'stale_context');
+    return;
+  }
+
+  if (command.type === 'composer.set-draft') {
+    composer.setDraft(command.text);
+    reportImHubCommandSuccess(command);
+    reportImHubComposerState();
+    return;
+  }
+  if (command.type === 'composer.get-draft') {
+    reportImHubCommandSuccess(command, { draft: composer.getDraft() });
+    return;
+  }
+  await handleImHubSendCommand(command, composer);
+}
+
+async function handleImHubSendCommand(
+  command: ImHubComposerCommand & { type: 'composer.send' },
+  composer: ImHubComposerBridge,
+): Promise<void> {
+  const existing = sendAttempts.get(command.attemptId);
+  if (existing) {
+    if (existing.contextRevision !== command.contextRevision
+      || existing.platformConversationId !== command.platformConversationId) {
+      reportImHubCommandFailure(command, 'attempt_context_mismatch');
+      return;
+    }
+    existing.commands.set(command.requestId, command);
+    if (existing.result) reportImHubSendResult(command, existing.result);
+    return;
+  }
+
+  if (!composer.canSend()) {
+    reportImHubCommandFailure(command, 'composer_not_sendable');
+    return;
+  }
+
+  const attempt: ImHubSendAttempt = {
+    attemptId: command.attemptId,
+    contextRevision: command.contextRevision,
+    platformConversationId: command.platformConversationId,
+    chatId: composer.platformConversationId,
+    commands: new Map([[command.requestId, command]]),
+    localResults: new Map(),
+    isSealed: false,
+  };
+  sendAttempts.set(command.attemptId, attempt);
+
+  try {
+    const wasStarted = await composer.send(command.attemptId, () => (
+      composerBridge === composer
+      && contextRevision === command.contextRevision
+      && composer.platformConversationId === command.platformConversationId
+    ));
+    if (!wasStarted) {
+      completeImHubSendAttempt(attempt, {
+        ok: false,
+        code: 'send_not_started',
+        message: getImHubBridgeErrorMessage('send_not_started'),
+      });
+    }
+  } catch {
+    completeImHubSendAttempt(attempt, {
+      ok: false,
+      code: 'send_failed',
+      message: getImHubBridgeErrorMessage('send_failed'),
+    });
+  }
+}
+
+function reportImHubContext(): void {
+  const bridge = getImHubBridge();
+  if (!bridge) return;
+  const composer = composerBridge;
+  bridge.emit({
+    protocolVersion: 2,
+    type: 'context.changed',
+    contextRevision,
+    context: composer ? {
+      platformConversationId: composer.platformConversationId,
+      contactExternalId: composer.contactExternalId,
+      contactDisplayName: composer.contactDisplayName ?? BRIDGE_NULL,
+    } : BRIDGE_NULL,
+  });
+}
+
+function reportImHubCommandSuccess(
+  command: ImHubComposerCommand,
+  extra: { draft?: string } = {},
+): void {
+  getImHubBridge()?.emit({
+    protocolVersion: 2,
+    type: 'command.result',
+    requestId: command.requestId,
+    command: command.type,
+    contextRevision: command.contextRevision,
+    ok: true,
+    ...extra,
+  });
+}
+
+function reportImHubCommandFailure(command: ImHubComposerCommand, code: string): void {
+  getImHubBridge()?.emit({
+    protocolVersion: 2,
+    type: 'command.result',
+    requestId: command.requestId,
+    command: command.type,
+    contextRevision: command.contextRevision,
+    ok: false,
+    attemptId: command.type === 'composer.send' ? command.attemptId : undefined,
+    error: { code, message: getImHubBridgeErrorMessage(code) },
+  });
+}
+
+function settleImHubSendAttempt(attempt: ImHubSendAttempt): void {
+  if (!attempt.isSealed || attempt.result) return;
+  const localResults = Array.from(attempt.localResults.values());
+  if (!localResults.length) {
+    completeImHubSendAttempt(attempt, {
+      ok: false,
+      code: 'send_not_started',
+      message: getImHubBridgeErrorMessage('send_not_started'),
+    });
+    return;
+  }
+  if (localResults.some(({ status }) => status === 'pending')) return;
+
+  const succeeded = localResults.filter(
+    (result): result is ImHubSendLocalResult & { platformMessageId: string } => (
+      result.status === 'succeeded' && Boolean(result.platformMessageId)
+    ),
+  );
+  if (succeeded.length === localResults.length) {
+    completeImHubSendAttempt(attempt, { ok: true, platformMessageId: succeeded[0].platformMessageId });
+    return;
+  }
+  completeImHubSendAttempt(attempt, {
+    ok: false,
+    code: succeeded.length ? 'partial_send_failed' : 'send_failed',
+    message: succeeded.length
+      ? getImHubBridgeErrorMessage('partial_send_failed')
+      : getImHubBridgeErrorMessage('send_failed'),
+  });
+}
+
+function completeImHubSendAttempt(attempt: ImHubSendAttempt, result: ImHubSendResult): void {
+  if (attempt.result) return;
+  attempt.result = result;
+  attempt.commands.forEach((command) => reportImHubSendResult(command, result));
+  pruneImHubSendAttempts();
+}
+
+function reportImHubSendResult(
+  command: ImHubComposerCommand & { type: 'composer.send' },
+  result: ImHubSendResult,
+): void {
+  getImHubBridge()?.emit({
+    protocolVersion: 2,
+    type: 'command.result',
+    requestId: command.requestId,
+    command: command.type,
+    contextRevision: command.contextRevision,
+    ok: result.ok,
+    attemptId: command.attemptId,
+    platformMessageId: result.ok ? result.platformMessageId : undefined,
+    error: result.ok ? undefined : { code: result.code, message: result.message },
+  });
+}
+
+function pruneImHubSendAttempts(): void {
+  const completed = Array.from(sendAttempts.values()).filter(({ result }) => Boolean(result));
+  completed.slice(0, -MAX_COMPLETED_SEND_ATTEMPTS).forEach((attempt) => {
+    sendAttempts.delete(attempt.attemptId);
+    attempt.localResults.forEach((_result, localKey) => sendAttemptIdByLocalMessage.delete(localKey));
+  });
+}
+
+function buildImHubLocalMessageKey(chatId: string, localMessageId: number): string {
+  return `${chatId}:${localMessageId}`;
+}
+
+function getImHubBridgeErrorMessage(code: string): string {
+  const lang = getTranslationFn();
+  switch (code) {
+    case 'stale_context':
+      return lang('ImHubContextChanged');
+    case 'attempt_context_mismatch':
+      return lang('ImHubAttemptContextMismatch');
+    case 'composer_not_sendable':
+      return lang('ImHubComposerNotSendable');
+    case 'send_not_started':
+      return lang('ImHubSendNotStarted');
+    case 'partial_send_failed':
+      return lang('ImHubPartialSendFailed');
+    default:
+      return lang('ImHubSendFailed');
   }
 }
 

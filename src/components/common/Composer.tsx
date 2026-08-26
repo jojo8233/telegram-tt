@@ -74,6 +74,7 @@ import {
   isSameReaction,
   isSystemBot,
   isUserRightBanned,
+  resolveEphemeralCommand,
 } from '../../global/helpers';
 import { getChatNotifySettings } from '../../global/helpers/notifications';
 import { getPeerTitle } from '../../global/helpers/peers';
@@ -136,7 +137,10 @@ import calcTextLineHeightAndCount from '../../util/element/calcTextLineHeightAnd
 import { isUserId } from '../../util/entities/ids';
 import { fetchBlob } from '../../util/files';
 import focusEditableElement from '../../util/focusEditableElement';
-import { registerImHubDraftBridge } from '../../util/imhub';
+import {
+  registerImHubComposerBridge,
+  reportImHubComposerState,
+} from '../../util/imhub';
 import { formatStarsAsIcon } from '../../util/localization/format';
 import { fetch } from '../../util/mediaLoader';
 import { MEMO_EMPTY_ARRAY } from '../../util/memo';
@@ -546,8 +550,8 @@ const Composer = ({
    * 不自己去调 sendMessage：原生这条路上还有限流、字数限制、回复引用、
    * 定时发送、静默发送等一整套逻辑，绕过去等于把它们全丢了。
    */
-  const handleImHubSend = useLastCallback(() => {
-    void handleSend();
+  const handleImHubSend = useLastCallback((attemptId: string, canContinue: () => boolean) => {
+    return handleSend(false, undefined, undefined, attemptId, canContinue);
   });
 
   const inputRef = useRef<HTMLDivElement>();
@@ -1363,6 +1367,7 @@ const Composer = ({
     scheduledAt,
     scheduleRepeatPeriod,
     isInvertedMedia,
+    imHubAttemptId,
   }: {
     attachments: ApiAttachment[];
     sendCompressed?: boolean;
@@ -1371,11 +1376,12 @@ const Composer = ({
     scheduledAt?: number;
     scheduleRepeatPeriod?: number;
     isInvertedMedia?: true;
-  }) => {
-    if (!validateEphemeralReply()) return;
+    imHubAttemptId?: string;
+  }): boolean => {
+    if (!validateEphemeralReply()) return false;
 
     if (!currentMessageList && !storyId) {
-      return;
+      return false;
     }
     isSilent = isSilent || isSilentPosting;
 
@@ -1405,6 +1411,8 @@ const Composer = ({
         attachments: prepareAttachmentsToSend(attachmentsToSend, sendCompressed),
         shouldGroupMessages: sendGrouped,
         isInvertedMedia,
+        // im-hub 补丁：只给 typed bridge 发起的原生发送附加稳定 attempt。
+        imHubAttemptId,
       });
     }
 
@@ -1418,6 +1426,7 @@ const Composer = ({
     requestMeasure(() => {
       resetComposer(false, shouldSkipCollapseLatch);
     });
+    return true;
   });
 
   const handleSendAttachmentsFromModal = useLastCallback((
@@ -1472,7 +1481,8 @@ const Composer = ({
       isSilent = false,
       scheduledAt?: number,
       scheduleRepeatPeriod?: number,
-    ) => {
+      imHubAttemptId?: string,
+    ): boolean => {
       const richEditorValue = richEditor.getValue();
       const currentRichMessage = richEditorValue.blocks.length ? richEditorValue : undefined;
       const formattedRichMessage = currentRichMessage ? getRichInputAsFormatted(currentRichMessage) : undefined;
@@ -1483,14 +1493,15 @@ const Composer = ({
 
       if (currentAttachments.length) {
         if (canSendAttachments(currentAttachments)) {
-          sendAttachments({
+          return sendAttachments({
             attachments: currentAttachments,
             scheduledAt,
             scheduleRepeatPeriod,
             isSilent,
+            imHubAttemptId,
           });
         }
-        return;
+        return false;
       }
 
       if (richMessageToSend) {
@@ -1499,9 +1510,9 @@ const Composer = ({
           || !isValidInputRichMessage(richMessageToSend)
           || !validateRichMessageLimits(richMessageToSend)
         ) {
-          return;
+          return false;
         }
-        if (!checkSlowMode()) return;
+        if (!checkSlowMode()) return false;
 
         const effectId = effect?.id;
         if (areEffectsSupported) saveEffectInDraft({ chatId, threadId, effectId: undefined });
@@ -1521,6 +1532,8 @@ const Composer = ({
             isSilent,
             shouldUpdateStickerSetOrder,
             effectId,
+            // im-hub 补丁：让最终 Telegram update 精确关联 typed bridge attempt。
+            imHubAttemptId,
           });
         }
 
@@ -1534,21 +1547,21 @@ const Composer = ({
         requestMeasure(() => {
           resetComposer(false, shouldSkipCollapseLatch);
         });
-        return;
+        return !editingMessage;
       }
 
       if (!text && !isForwarding) {
-        return;
+        return false;
       }
 
-      if (!validateTextLength(text)) return;
+      if (!validateTextLength(text)) return false;
 
       const messageInput = document.querySelector<HTMLDivElement>(editableInputCssSelector);
 
       const effectId = effect?.id;
 
       if (text || isForwarding) {
-        if (!checkSlowMode()) return;
+        if (!checkSlowMode()) return false;
 
         const isInvertedMedia = hasWebPagePreview ? attachmentSettings.isInvertedMedia : undefined;
 
@@ -1566,6 +1579,8 @@ const Composer = ({
           effectId,
           webPageMediaSize: attachmentSettings.webPageMediaSize,
           webPageUrl: hasWebPagePreview ? webPagePreview.url : undefined,
+          // im-hub 补丁：让最终 Telegram update 精确关联 typed bridge attempt。
+          imHubAttemptId,
         });
       }
 
@@ -1582,6 +1597,7 @@ const Composer = ({
       requestMeasure(() => {
         resetComposer(false, Boolean(scheduledAt && !isInScheduledList));
       });
+      return true;
     },
   );
 
@@ -1589,11 +1605,13 @@ const Composer = ({
     isSilent = false,
     scheduledAt?: number,
     scheduleRepeatPeriod?: number,
-  ) => {
-    if (!validateEphemeralReply()) return;
+    imHubAttemptId?: string,
+    canContinue: () => boolean = () => true,
+  ): Promise<boolean> => {
+    if (!validateEphemeralReply()) return false;
 
     if (!currentMessageList && !storyId) {
-      return;
+      return false;
     }
 
     isSilent = isSilent || isSilentPosting;
@@ -1630,22 +1648,52 @@ const Composer = ({
       }
     }
 
-    handleSendCore(currentAttachments, isSilent, scheduledAt, scheduleRepeatPeriod);
+    // im-hub 补丁：录音停止等异步步骤期间切换 chat/topic 时拒绝旧命令。
+    if (!canContinue()) return false;
+    return handleSendCore(currentAttachments, isSilent, scheduledAt, scheduleRepeatPeriod, imHubAttemptId);
   });
 
-  // 翻译工作区在本组件外面渲染，用这条通道驱动原生输入框。
-  // 卸载时必须注销，否则切走的会话仍然握着一个指向已销毁编辑器的引用。
+  const canSendImHubDraft = useLastCallback(() => {
+    const commandText = getImHubDraft();
+    const isEphemeralCommand = Boolean(
+      chat && commandText && resolveEphemeralCommand(getGlobal(), { chat, commandText }),
+    );
+    return Boolean(
+      hasInputContent
+      && !editingMessage
+      && !isEphemeralReply
+      && !isEphemeralCommand
+      && !isForwarding
+      && !isInScheduledList
+      && !isComposerBlocked
+      && !isNeedPremium
+      && !isAccountFrozen,
+    );
+  });
+
+  // im-hub 补丁：把当前 chat/topic 与原生 Composer 动作登记给 typed bridge。
+  // 卸载时必须注销，否则旧 revision 仍会握着已销毁编辑器的引用。
   useEffect(() => {
-    if (!isInMessageList) return undefined;
-    registerImHubDraftBridge({
+    if (!isInMessageList || !isForCurrentMessageList) return undefined;
+    return registerImHubComposerBridge({
+      platformConversationId: chatId,
+      contactExternalId: chatId,
+      contactDisplayName: chat?.title,
       setDraft: setImHubDraft,
       getDraft: getImHubDraft,
+      canSend: canSendImHubDraft,
       send: handleImHubSend,
     });
-    return () => {
-      registerImHubDraftBridge(undefined);
-    };
-  }, [isInMessageList]);
+  }, [chat?.title, chatId, isForCurrentMessageList, isInMessageList, threadId]);
+
+  // im-hub 补丁：原生草稿或可发送门禁变化时回报当前 revision 的事实。
+  useEffect(() => {
+    if (!isInMessageList || !isForCurrentMessageList) return;
+    reportImHubComposerState();
+  }, [
+    attachments.length, editingMessage, hasInputContent, isAccountFrozen, isComposerBlocked,
+    isForCurrentMessageList, isInMessageList, isNeedPremium, richMessage,
+  ]);
 
   const handleSendWithConfirmation = useLastCallback((
     isSilent = false,

@@ -3211,3 +3211,9 @@
 "SettingsStickersDesc" = "Stickers, Emoji, Reactions";
 "SettingsLanguageDesc" = "{language}, Translate Messages";
 "SettingsSessionsDesc" = "Sessions, Automatically terminate";
+"ImHubContextChanged" = "The active conversation changed. Try again.";
+"ImHubAttemptContextMismatch" = "This send attempt belongs to another conversation.";
+"ImHubComposerNotSendable" = "The current composer cannot send this draft.";
+"ImHubSendNotStarted" = "The message was not sent.";
+"ImHubSendFailed" = "Telegram could not send the message.";
+"ImHubPartialSendFailed" = "Telegram sent only part of the attachment group. Check the conversation before retrying.";

@@ -408,6 +408,8 @@ export function sendMessageLocal(
     message: localMessage,
     poll: localPoll,
     wasDrafted,
+    // im-hub 补丁：只回传非敏感 attempt id，不进入 Telegram MTProto 参数。
+    imHubAttemptId: params.imHubAttemptId,
   });
 
   return Promise.resolve(localMessage);

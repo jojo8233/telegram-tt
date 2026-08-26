@@ -838,6 +838,8 @@ export type SendMessageParams = {
   forwardParams?: ForwardMessagesParams;
   isStoryReply?: boolean;
   suggestedMedia?: MediaContent;
+  /** im-hub 补丁：仅在 typed bridge 原生发送链内部关联本地与最终消息。 */
+  imHubAttemptId?: string;
 };
 
 export type ForwardedLocalMessagesSlice = {

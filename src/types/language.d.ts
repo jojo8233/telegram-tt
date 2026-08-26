@@ -2352,6 +2352,12 @@ export interface LangPair {
   'SettingsPerformanceDesc': undefined;
   'SettingsStickersDesc': undefined;
   'SettingsSessionsDesc': undefined;
+  'ImHubContextChanged': undefined;
+  'ImHubAttemptContextMismatch': undefined;
+  'ImHubComposerNotSendable': undefined;
+  'ImHubSendNotStarted': undefined;
+  'ImHubSendFailed': undefined;
+  'ImHubPartialSendFailed': undefined;
 }
 
 export interface LangPairWithVariables<V = LangVariable> {

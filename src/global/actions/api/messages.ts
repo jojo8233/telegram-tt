@@ -32,6 +32,7 @@ import type { RequiredGlobalActions } from '../../index';
 import type {
   ActionReturnType, GlobalState, ReportSection, TabArgs,
 } from '../../types';
+import type { ActionPayloads } from '../../types/actions';
 import { MAIN_THREAD_ID, MESSAGE_DELETED } from '../../../api/types';
 import { LoadMoreDirection } from '../../../types';
 
@@ -53,7 +54,11 @@ import { IS_IOS } from '../../../util/browser/windowEnvironment';
 import { copyTextToClipboardFromPromise } from '../../../util/clipboard';
 import { isDeepLink } from '../../../util/deepLinkParser';
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
-import { isImHubTranslationEnabled, translateBatch } from '../../../util/imhub';
+import {
+  isImHubTranslationEnabled,
+  sealImHubSendAttempt,
+  translateBatch,
+} from '../../../util/imhub';
 import {
   areSortedArraysIntersecting,
   buildCollectionByKey,
@@ -497,6 +502,20 @@ addActionHandler('loadMessagesById', async (global, actions, payload): Promise<v
 });
 
 addActionHandler('sendMessage', async (global, actions, payload): Promise<void> => {
+  const { imHubAttemptId } = payload;
+  try {
+    await handleSendMessage(global, actions, payload);
+  } finally {
+    // im-hub 补丁：所有原生分支完成建本地消息后再统一收敛 attempt。
+    if (imHubAttemptId) sealImHubSendAttempt(imHubAttemptId);
+  }
+});
+
+async function handleSendMessage(
+  global: GlobalState,
+  actions: RequiredGlobalActions,
+  payload: ActionPayloads['sendMessage'],
+): Promise<void> {
   const { messageList, tabId = getCurrentTabId() } = payload;
 
   const { storyId, peerId: storyPeerId } = selectCurrentViewedStory(global, tabId);
@@ -814,7 +833,7 @@ addActionHandler('sendMessage', async (global, actions, payload): Promise<void> 
     }
   }
   if (localMessages?.length) sendMessagesWithNotification(global, localMessages);
-});
+}
 
 addActionHandler('sendInviteMessages', async (global, actions, payload): Promise<void> => {
   const { chatId, userIds, tabId = getCurrentTabId() } = payload;
