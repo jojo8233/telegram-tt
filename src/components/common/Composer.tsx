@@ -80,7 +80,6 @@ import { getPeerTitle } from '../../global/helpers/peers';
 import { getRichMessageUsage } from '../../global/helpers/richMessage';
 import { containsCustomEmoji, stripCustomEmoji } from '../../global/helpers/symbols';
 import {
-  selectChatMessages,
   selectBot,
   selectCanManageAutoDelete,
   selectCanPlayAnimatedEmojis,
@@ -137,6 +136,7 @@ import calcTextLineHeightAndCount from '../../util/element/calcTextLineHeightAnd
 import { isUserId } from '../../util/entities/ids';
 import { fetchBlob } from '../../util/files';
 import focusEditableElement from '../../util/focusEditableElement';
+import { registerImHubDraftBridge } from '../../util/imhub';
 import { formatStarsAsIcon } from '../../util/localization/format';
 import { fetch } from '../../util/mediaLoader';
 import { MEMO_EMPTY_ARRAY } from '../../util/memo';
@@ -183,7 +183,6 @@ import useDraft from '../middle/composer/hooks/useDraft';
 import useEditing from '../middle/composer/hooks/useEditing';
 import useLoadLinkPreview from '../middle/composer/hooks/useLoadLinkPreview';
 import usePaidMessageConfirmation from '../middle/composer/hooks/usePaidMessageConfirmation';
-import { registerImHubDraftBridge } from '../../util/imhub';
 import useRichEditor from '../middle/composer/hooks/useRichEditor';
 import useVideoRecording from '../middle/composer/hooks/useVideoRecording';
 import useVoiceRecording from '../middle/composer/hooks/useVoiceRecording';
@@ -549,20 +548,6 @@ const Composer = ({
    */
   const handleImHubSend = useLastCallback(() => {
     void handleSend();
-  });
-
-
-  const getImHubPeerText = useLastCallback((): string | undefined => {
-    const byId = selectChatMessages(getGlobal(), chatId);
-    if (!byId) return undefined;
-    const ids = Object.keys(byId).map(Number).sort((a, b) => b - a);
-    for (const id of ids) {
-      const message = byId[id];
-      if (!message || message.isOutgoing) continue;
-      const text = message.content?.text?.text;
-      if (text) return text;
-    }
-    return undefined;
   });
 
   const inputRef = useRef<HTMLDivElement>();
@@ -1607,7 +1592,6 @@ const Composer = ({
   ) => {
     if (!validateEphemeralReply()) return;
 
-
     if (!currentMessageList && !storyId) {
       return;
     }
@@ -1649,7 +1633,7 @@ const Composer = ({
     handleSendCore(currentAttachments, isSilent, scheduledAt, scheduleRepeatPeriod);
   });
 
-// 翻译工作区在本组件外面渲染，用这条通道驱动原生输入框。
+  // 翻译工作区在本组件外面渲染，用这条通道驱动原生输入框。
   // 卸载时必须注销，否则切走的会话仍然握着一个指向已销毁编辑器的引用。
   useEffect(() => {
     if (!isInMessageList) return undefined;
@@ -1658,7 +1642,9 @@ const Composer = ({
       getDraft: getImHubDraft,
       send: handleImHubSend,
     });
-    return () => { registerImHubDraftBridge(undefined); };
+    return () => {
+      registerImHubDraftBridge(undefined);
+    };
   }, [isInMessageList]);
 
   const handleSendWithConfirmation = useLastCallback((

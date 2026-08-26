@@ -29,9 +29,9 @@ import {
   WEB_APP_PLATFORM,
 } from '../../config';
 import { IS_TRANSLATION_SUPPORTED } from '../../util/browser/windowEnvironment';
-import { isImHubTranslationEnabled } from '../../util/imhub';
 import { isUserId } from '../../util/entities/ids';
 import { getCurrentTabId } from '../../util/establishMultitabRole';
+import { isImHubTranslationEnabled } from '../../util/imhub';
 import { getMessageKey, isLocalMessageId } from '../../util/keys/messageKey';
 import { parseTranslationCacheKey } from '../../util/keys/translationKey';
 import { isIpRevealingMedia } from '../../util/media/ipRevealingMedia';

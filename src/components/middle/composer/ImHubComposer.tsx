@@ -2,8 +2,8 @@ import type { FC } from '../../../lib/teact/teact';
 import React, {
   memo, useEffect, useRef, useState,
 } from '../../../lib/teact/teact';
-
 import { getGlobal } from '../../../global';
+
 import { selectChatMessages } from '../../../global/selectors';
 import buildClassName from '../../../util/buildClassName';
 import {
@@ -48,6 +48,26 @@ const lockKey = (chatId: string) => `im-hub.replyLang.${chatId}`;
 const BACK_TRANSLATE_DEBOUNCE = 600;
 
 /**
+ * 客户最近一条有文字的消息，用来自动判断回复语言。
+ *
+ * 从最新往回找，跳过自己发的和没有文字的（图片、贴纸、语音）。
+ */
+function getPeerText(chatId: string): string | undefined {
+  const byId = selectChatMessages(getGlobal(), chatId);
+  if (!byId) return undefined;
+  const ids = Object.keys(byId).map(Number).sort((a, b) => b - a);
+  for (const id of ids) {
+    const message = byId[id];
+    if (!message || message.isOutgoing) continue;
+    const text = message.content?.text?.text;
+    if (text) {
+      return text;
+    }
+  }
+  return undefined;
+}
+
+/**
  * 发送前译文校对区。
  *
  * 与原生输入框并存而不是取代它：原生那个还管着附件、语音、表情、回复引用，
@@ -86,23 +106,6 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
     getImHubDraftBridge()?.send();
   }
 
-  /**
-   * 客户最近一条有文字的消息，用来自动判断回复语言。
-   *
-   * 从最新往回找，跳过自己发的和没有文字的（图片、贴纸、语音）。
-   */
-  function getPeerText(): string | undefined {
-    const byId = selectChatMessages(getGlobal(), chatId);
-    if (!byId) return undefined;
-    const ids = Object.keys(byId).map(Number).sort((a, b) => b - a);
-    for (const id of ids) {
-      const message = byId[id];
-      if (!message || message.isOutgoing) continue;
-      const text = message.content?.text?.text;
-      if (text) return text;
-    }
-    return undefined;
-  }
   const hasPreview = preview.trim().length > 0;
 
   // 换会话：清空一切，并读回这个会话上次锁定的语言
@@ -124,19 +127,21 @@ const ImHubComposer: FC<OwnProps> = ({ chatId }) => {
   // 没锁定时，按客户最近一条消息自动判断回复语言
   useEffect(() => {
     if (lockedLang) return;
-    const peer = getPeerText();
+    const peer = getPeerText(chatId);
     if (!peer || peer.trim().length < MIN_DETECT_LENGTH) return;
 
     let isCancelled = false;
     void detectLanguageViaImHub(peer).then((lang) => {
       if (isCancelled || !lang) return;
-      const code = lang.split('-')[0]!;
+      const code = lang.split('-')[0];
       // 识别出来的语种我们不支持时不要硬用，退回默认；
       // 客户说中文时也不该把回复翻成中文
       if (!SUPPORTED.has(code) || code === 'zh') return;
       setAutoLang(code);
     });
-    return () => { isCancelled = true; };
+    return () => {
+      isCancelled = true;
+    };
   }, [chatId, lockedLang]);
 
   function scheduleBackTranslate(text: string) {

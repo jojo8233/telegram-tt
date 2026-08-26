@@ -64,9 +64,9 @@ import {
 } from '../../global/selectors/threads';
 import animateScroll, { isAnimatingScroll, restartCurrentScrollAnimation } from '../../util/animateScroll';
 import { IS_FIREFOX } from '../../util/browser/windowEnvironment';
-import { isImHubTranslationEnabled } from '../../util/imhub';
 import buildClassName from '../../util/buildClassName';
 import { isUserId } from '../../util/entities/ids';
+import { isImHubTranslationEnabled } from '../../util/imhub';
 import { buildCollectionByKey } from '../../util/iteratees';
 import { isLocalMessageId } from '../../util/keys/messageKey';
 import resetScroll from '../../util/resetScroll';

@@ -24,7 +24,7 @@ import {
 import { selectActiveRestrictionReasons } from './messages';
 import { selectTabState } from './tabs';
 import {
-  selectBot, selectIsCurrentUserPremium, selectUser, selectUserFullInfo,
+  selectBot, selectUser, selectUserFullInfo,
 } from './users';
 
 export function selectChat<T extends GlobalState>(global: T, chatId: string): ApiChat | undefined {

@@ -44,7 +44,6 @@ import type {
   TranslationTone,
 } from '../../../types';
 import type { Signal } from '../../../util/signals';
-import { isImHubTranslationEnabled } from '../../../util/imhub';
 import { MAIN_THREAD_ID } from '../../../api/types';
 import { AudioOrigin } from '../../../types';
 
@@ -135,6 +134,7 @@ import { IS_ANDROID, IS_TRANSLATION_SUPPORTED } from '../../../util/browser/wind
 import buildClassName from '../../../util/buildClassName';
 import buildStyle from '../../../util/buildStyle';
 import { isUserId } from '../../../util/entities/ids';
+import { isImHubTranslationEnabled } from '../../../util/imhub';
 import { getMessageKey } from '../../../util/keys/messageKey';
 import { parseTranslationCacheKey } from '../../../util/keys/translationKey';
 import { getServerTime } from '../../../util/serverTime';

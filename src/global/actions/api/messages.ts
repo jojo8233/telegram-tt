@@ -21,14 +21,13 @@ import type {
   MediaContent,
 } from '../../../api/types';
 import type {
-  TranslationTone,
   ForwardMessagesParams,
   SendMessageParams,
   TextSummary,
   ThreadId,
+  TranslationTone,
 } from '../../../types';
 import type { MessageKey } from '../../../util/keys/messageKey';
-import { isImHubTranslationEnabled, translateBatch } from '../../../util/imhub';
 import type { RequiredGlobalActions } from '../../index';
 import type {
   ActionReturnType, GlobalState, ReportSection, TabArgs,
@@ -54,6 +53,7 @@ import { IS_IOS } from '../../../util/browser/windowEnvironment';
 import { copyTextToClipboardFromPromise } from '../../../util/clipboard';
 import { isDeepLink } from '../../../util/deepLinkParser';
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
+import { isImHubTranslationEnabled, translateBatch } from '../../../util/imhub';
 import {
   areSortedArraysIntersecting,
   buildCollectionByKey,

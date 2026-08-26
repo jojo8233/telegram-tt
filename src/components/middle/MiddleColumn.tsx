@@ -83,13 +83,13 @@ import usePinnedMessage from './hooks/usePinnedMessage';
 import useFluidBackgroundFilter from './message/hooks/useFluidBackgroundFilter';
 
 import Composer from '../common/Composer';
-import ImHubComposer from './composer/ImHubComposer';
 import PrivacySettingsNoticeModal from '../common/PrivacySettingsNoticeModal.async';
 import SeenByModal from '../common/SeenByModal.async';
 import UnpinAllMessagesModal from '../common/UnpinAllMessagesModal.async';
 import Transition from '../ui/Transition';
 import ChatLanguageModal from './ChatLanguageModal.async';
 import { DropAreaState } from './composer/DropArea';
+import ImHubComposer from './composer/ImHubComposer';
 import EmojiInteractionAnimation from './EmojiInteractionAnimation.async';
 import FloatingActionButtons from './FloatingActionButtons';
 import FooterActionBar from './footer/FooterActionBar';
