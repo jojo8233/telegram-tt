@@ -15,6 +15,7 @@ import {
 import { IS_TAURI } from '../util/browser/globalEnvironment';
 import { IS_INSTALL_PROMPT_SUPPORTED, PLATFORM_ENV } from '../util/browser/windowEnvironment';
 import buildClassName from '../util/buildClassName';
+import { reportImHubAccountIdentity } from '../util/imhub';
 import { setupBeforeInstallPrompt } from '../util/installPrompt';
 import { ACCOUNT_SLOT, getAccountSlotUrl, getFirstLoggedInAccountSlot } from '../util/multiaccount';
 import { hasEncryptedSession } from '../util/passcode';
@@ -42,6 +43,7 @@ import styles from './App.module.scss';
 
 type StateProps = {
   authState: GlobalState['auth']['state'];
+  currentUserId?: string;
   isScreenLocked?: boolean;
   hasPasscode?: boolean;
   inactiveReason?: 'auth' | 'otherClient';
@@ -65,6 +67,7 @@ const INACTIVE_PAGE_TITLE = `${ACTIVE_PAGE_TITLE} ${INACTIVE_MARKER}`;
 
 const App = ({
   authState,
+  currentUserId,
   isScreenLocked,
   hasPasscode,
   inactiveReason,
@@ -82,6 +85,16 @@ const App = ({
       setupBeforeInstallPrompt();
     }
   }, []);
+
+  useEffect(() => {
+    // im-hub 补丁：主进程只在实际 Telegram self user id 与账号绑定一致后开放能力
+    if (authState === 'authorizationStateReady') {
+      if (currentUserId) reportImHubAccountIdentity(currentUserId);
+    } else if (authState) {
+      // 初始 authState 尚未知时不报 signed-out，避免误清仍在恢复中的持久化登录分区
+      reportImHubAccountIdentity(null);
+    }
+  }, [authState, currentUserId]);
 
   useEffect(() => {
     const hash = getInitialLocationHash();
@@ -275,6 +288,7 @@ export default withGlobal(
 
     return {
       authState,
+      currentUserId: global.currentUserId,
       isScreenLocked: global.passcode?.isScreenLocked,
       hasPasscode: global.passcode?.hasPasscode,
       inactiveReason: selectTabState(global).inactiveReason,

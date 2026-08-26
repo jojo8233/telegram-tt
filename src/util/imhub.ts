@@ -5,21 +5,33 @@
  * 跟上游合并时冲突面最小——上游改不到这个文件，我们也尽量不把逻辑散进
  * 上游原有的文件里。
  *
- * 配置由外壳注入：Electron 的 webview preload 会在页面加载前写入
- * window.__IM_HUB__。拿不到就静默降级成不翻译，而不是抛异常——
- * 翻译挂了不该让整个客户端起不来。
+ * Electron webview preload 只暴露 typed bridge。页面拿不到服务端地址、用户 JWT、
+ * control grant 或任意 IPC；翻译请求由主进程按 partition 与实际登录身份代理。
  */
-
-interface ImHubConfig {
-  serverUrl: string;
-  token: string;
-}
 
 interface BatchResult {
   translated: string;
   detectedLang: string;
   provider: string;
   failed: boolean;
+}
+
+interface ImHubNativeBridge {
+  protocolVersion: number;
+  emit(event: {
+    protocolVersion: 2;
+    type: 'bridge.ready' | 'account.signed-out';
+  } | {
+    protocolVersion: 2;
+    type: 'account.identity';
+    platformAccountExternalId: string;
+  }): void;
+  translateBatch(input: {
+    texts: string[];
+    targetLang: string;
+    sourceLang?: string;
+  }): Promise<BatchResult[] | undefined>;
+  detectLanguage(text: string): Promise<string | undefined>;
 }
 
 const TELEGRAM_SERVER_MESSAGE_ID_MAX = 2_147_483_647;
@@ -106,7 +118,7 @@ export function parseImHubTelegramMessageId(messageId: string): ImHubTelegramMes
 
 declare global {
   interface Window {
-    __IM_HUB__?: ImHubConfig;
+    imHubNativeBridge?: ImHubNativeBridge;
   }
 }
 
@@ -136,14 +148,32 @@ export function getImHubDraftBridge(): ImHubDraftBridge | undefined {
   return draftBridge;
 }
 
-export function getImHubConfig(): ImHubConfig | undefined {
-  const cfg = window.__IM_HUB__;
-  if (!cfg?.serverUrl || !cfg.token) return undefined;
-  return cfg;
+function getImHubBridge(): ImHubNativeBridge | undefined {
+  const bridge = window.imHubNativeBridge;
+  return bridge?.protocolVersion === 2 ? bridge : undefined;
 }
 
+let reportedPlatformAccountExternalId: string | null = null;
+
 export function isImHubTranslationEnabled(): boolean {
-  return getImHubConfig() !== undefined;
+  return getImHubBridge() !== undefined;
+}
+
+export function reportImHubAccountIdentity(currentUserId: string | null): void {
+  const bridge = getImHubBridge();
+  if (!bridge) return;
+  bridge.emit({ protocolVersion: 2, type: 'bridge.ready' });
+  if (currentUserId) {
+    reportedPlatformAccountExternalId = currentUserId;
+    bridge.emit({
+      protocolVersion: 2,
+      type: 'account.identity',
+      platformAccountExternalId: currentUserId,
+    });
+  } else if (reportedPlatformAccountExternalId !== null) {
+    reportedPlatformAccountExternalId = null;
+    bridge.emit({ protocolVersion: 2, type: 'account.signed-out' });
+  }
 }
 
 /**
@@ -152,19 +182,11 @@ export function isImHubTranslationEnabled(): boolean {
  * 发送前校对靠它决定该翻成什么语言：依据是客户最近一条消息用的语言。
  */
 export async function detectLanguageViaImHub(text: string): Promise<string | undefined> {
-  const cfg = getImHubConfig();
-  if (!cfg || !text.trim()) return undefined;
+  const bridge = getImHubBridge();
+  if (!bridge || !text.trim()) return undefined;
 
   try {
-    const res = await fetch(`${cfg.serverUrl}/api/translate/detect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.token}` },
-      body: JSON.stringify({ text }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return undefined;
-    const body = await res.json() as { detectedLang?: string | null };
-    const lang = body.detectedLang;
+    const lang = await bridge.detectLanguage(text);
     // 'und' 是"没识别出来"的占位值，不是一种语言，不能当目标语言用
     if (!lang || lang.toLowerCase() === 'und') return undefined;
     return lang.toLowerCase();
@@ -193,30 +215,14 @@ export async function translateBatch(
   texts: string[],
   targetLang: string,
 ): Promise<BatchResult[] | undefined> {
-  const cfg = getImHubConfig();
-  if (!cfg) return undefined;
+  const bridge = getImHubBridge();
+  if (!bridge) return undefined;
 
   try {
-    const res = await fetch(`${cfg.serverUrl}/api/translate/batch`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${cfg.token}`,
-      },
-      body: JSON.stringify({ texts, targetLang }),
-      // 20 条一批，给足时间但不能无限等——挂住的请求会让 pending 永远不消
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) {
-      // eslint-disable-next-line no-console
-      console.error('[im-hub] 翻译接口返回', res.status);
-      return undefined;
-    }
-    const body = await res.json() as { results?: BatchResult[] };
-    return body.results;
-  } catch (err) {
+    return await bridge.translateBatch({ texts, targetLang });
+  } catch {
     // eslint-disable-next-line no-console
-    console.error('[im-hub] 翻译请求失败', err);
+    console.error('[im-hub] 翻译代理请求失败');
     return undefined;
   }
 }
