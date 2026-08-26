@@ -414,6 +414,7 @@ async function handleImHubSendCommand(
       composerBridge === composer
       && contextRevision === command.contextRevision
       && composer.platformConversationId === command.platformConversationId
+      && composer.canSend()
     ));
     if (!wasStarted) {
       completeImHubSendAttempt(attempt, {

@@ -358,6 +358,11 @@ type ScheduledMessageArgs = TabState['contentToBeScheduled'] | {
   id: string; queryId: string; isSilent?: boolean;
 };
 
+type ImHubPendingPaidSend = {
+  attemptId: string;
+  resolve(wasStarted: boolean): void;
+};
+
 const VOICE_RECORDING_FILENAME = 'wonderful-voice-message.ogg';
 const CAN_SWITCH_RECORD_MODE = IS_VOICE_RECORDING_SUPPORTED && IS_VIDEO_RECORDING_SUPPORTED;
 // When voice recording is active, composer placeholder will hide to prevent overlapping
@@ -544,19 +549,18 @@ const Composer = ({
 
   const getImHubDraft = useLastCallback((): string => richEditor.getAsFormatted()?.text ?? '');
 
-  /**
-   * 走原生发送流程，发的就是原生输入框里的内容。
-   *
-   * 不自己去调 sendMessage：原生这条路上还有限流、字数限制、回复引用、
-   * 定时发送、静默发送等一整套逻辑，绕过去等于把它们全丢了。
-   */
-  const handleImHubSend = useLastCallback((attemptId: string, canContinue: () => boolean) => {
-    return handleSend(false, undefined, undefined, attemptId, canContinue);
-  });
-
   const inputRef = useRef<HTMLDivElement>();
   const composerRef = useRef<HTMLDivElement>();
   const counterRef = useRef<HTMLSpanElement>();
+  const imHubPendingPaidSendRef = useRef<ImHubPendingPaidSend>();
+
+  const cancelImHubPendingPaidSend = useLastCallback(() => {
+    const pending = imHubPendingPaidSendRef.current;
+    if (!pending) return false;
+    imHubPendingPaidSendRef.current = undefined;
+    pending.resolve(false);
+    return true;
+  });
 
   const storyReactionRef = useRef<HTMLButtonElement>();
 
@@ -788,6 +792,12 @@ const Composer = ({
     setAutoApprove: setShouldPaidMessageAutoApprove,
     handleWithConfirmation: handleActionWithPaymentConfirmation,
   } = usePaidMessageConfirmation(starsForAllMessages, isStarsBalanceModalOpen, starsBalance);
+
+  const handleImHubPaymentConfirmClose = useLastCallback(() => {
+    // im-hub 补丁：取消付费确认是明确的“未开始发送”，不能让 attempt 永久悬挂。
+    cancelImHubPendingPaidSend();
+    closeConfirmModalPayForMessage();
+  });
 
   const isPaidSendDeferred = starsForAllMessages > 0 && !shouldPaidMessageAutoApprove;
 
@@ -1653,6 +1663,32 @@ const Composer = ({
     return handleSendCore(currentAttachments, isSilent, scheduledAt, scheduleRepeatPeriod, imHubAttemptId);
   });
 
+  /**
+   * im-hub typed bridge 仍走原生发送流程；付费消息复用 Telegram 的确认弹窗。
+   * 余额不足时保持不可发送，让用户从原生 Composer 进入充值流程。
+   */
+  const handleImHubSend = useLastCallback((
+    attemptId: string,
+    canContinue: () => boolean,
+  ): Promise<boolean> => {
+    if (!checkCanSendRichContent() || !canContinue()) return Promise.resolve(false);
+    if (!starsForAllMessages) {
+      return handleSend(false, undefined, undefined, attemptId, canContinue);
+    }
+    if (starsBalance < starsForAllMessages) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      cancelImHubPendingPaidSend();
+      imHubPendingPaidSendRef.current = { attemptId, resolve };
+      handleActionWithPaymentConfirmation(() => {
+        const pending = imHubPendingPaidSendRef.current;
+        if (!pending || pending.attemptId !== attemptId) return;
+        imHubPendingPaidSendRef.current = undefined;
+        void handleSend(false, undefined, undefined, attemptId, canContinue).then(resolve, () => resolve(false));
+      });
+    });
+  });
+
   const canSendImHubDraft = useLastCallback(() => {
     const commandText = getImHubDraft();
     const isEphemeralCommand = Boolean(
@@ -1667,7 +1703,8 @@ const Composer = ({
       && !isInScheduledList
       && !isComposerBlocked
       && !isNeedPremium
-      && !isAccountFrozen,
+      && !isAccountFrozen
+      && (!starsForAllMessages || starsBalance >= starsForAllMessages),
     );
   });
 
@@ -1675,7 +1712,7 @@ const Composer = ({
   // 卸载时必须注销，否则旧 revision 仍会握着已销毁编辑器的引用。
   useEffect(() => {
     if (!isInMessageList || !isForCurrentMessageList) return undefined;
-    return registerImHubComposerBridge({
+    const unregister = registerImHubComposerBridge({
       platformConversationId: chatId,
       contactExternalId: chatId,
       contactDisplayName: chat?.title,
@@ -1684,7 +1721,12 @@ const Composer = ({
       canSend: canSendImHubDraft,
       send: handleImHubSend,
     });
-  }, [chat?.title, chatId, isForCurrentMessageList, isInMessageList, threadId]);
+    return () => {
+      // im-hub 补丁：切换 chat/topic 时取消尚未确认的付费 attempt。
+      if (cancelImHubPendingPaidSend()) closeConfirmModalPayForMessage();
+      unregister();
+    };
+  }, [chat?.title, chatId, closeConfirmModalPayForMessage, isForCurrentMessageList, isInMessageList, threadId]);
 
   // im-hub 补丁：原生草稿或可发送门禁变化时回报当前 revision 的事实。
   useEffect(() => {
@@ -1692,7 +1734,8 @@ const Composer = ({
     reportImHubComposerState();
   }, [
     attachments.length, editingMessage, hasInputContent, isAccountFrozen, isComposerBlocked,
-    isForCurrentMessageList, isInMessageList, isNeedPremium, richMessage,
+    isEphemeralReply, isForCurrentMessageList, isForwarding, isInMessageList, isInScheduledList,
+    isNeedPremium, richMessage, starsBalance, starsForAllMessages,
   ]);
 
   const handleSendWithConfirmation = useLastCallback((
@@ -3178,7 +3221,7 @@ const Composer = ({
       {calendar}
       <PaymentMessageConfirmDialog
         isOpen={isPaymentMessageConfirmDialogOpen}
-        onClose={closeConfirmModalPayForMessage}
+        onClose={handleImHubPaymentConfirmClose}
         userName={chat ? getPeerTitle(lang, chat) : undefined}
         messagePriceInStars={paidMessagesStars || 0}
         messagesCount={messagesCount}
