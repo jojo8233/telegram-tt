@@ -84,6 +84,9 @@ let emitOutboxEvent: EmitOutboxEvent | undefined;
 let activeEventId: string | undefined;
 let pumpTimer: ReturnType<typeof setTimeout> | undefined;
 let ackTimer: ReturnType<typeof setTimeout> | undefined;
+// IndexedDB 等待期间的新调度只记录请求，始终保持单一发送协程。
+let isPumping = false;
+let requestedPumpDelay: number | undefined;
 let lastErrorCode: string | undefined;
 let storageQueue = Promise.resolve<unknown>(undefined);
 
@@ -202,8 +205,15 @@ export function acknowledgeImHubOutboxEvent(
 }
 
 function schedulePump(delay: number): void {
-  if (!activeAccountExternalId || !emitOutboxEvent || activeEventId) return;
+  if (!activeAccountExternalId || !emitOutboxEvent) return;
+  if (activeEventId || isPumping) {
+    requestedPumpDelay = requestedPumpDelay === undefined
+      ? delay
+      : Math.min(requestedPumpDelay, delay);
+    return;
+  }
   if (pumpTimer) clearTimeout(pumpTimer);
+  requestedPumpDelay = undefined;
   pumpTimer = setTimeout(() => {
     pumpTimer = undefined;
     void pumpOutbox();
@@ -213,7 +223,8 @@ function schedulePump(delay: number): void {
 async function pumpOutbox(): Promise<void> {
   const accountExternalId = activeAccountExternalId;
   const emit = emitOutboxEvent;
-  if (!accountExternalId || !emit || activeEventId) return;
+  if (!accountExternalId || !emit || activeEventId || isPumping) return;
+  isPumping = true;
 
   try {
     const now = Date.now();
@@ -247,6 +258,9 @@ async function pumpOutbox(): Promise<void> {
     resetActiveEvent();
     void reportImHubOutboxStatus();
     schedulePump(RETRY_BASE_DELAY_MS);
+  } finally {
+    isPumping = false;
+    if (requestedPumpDelay !== undefined && !activeEventId) schedulePump(requestedPumpDelay);
   }
 }
 
@@ -284,6 +298,7 @@ async function reportImHubOutboxStatus(): Promise<void> {
 function resetDeliveryState(): void {
   if (pumpTimer) clearTimeout(pumpTimer);
   pumpTimer = undefined;
+  requestedPumpDelay = undefined;
   resetActiveEvent();
 }
 
