@@ -1034,7 +1034,7 @@ export default class MTProtoSender {
             || e.errorMessage === 'SESSION_REVOKED'
             || e.errorMessage === 'USER_DEACTIVATED') {
             // 'AUTH_KEY_UNREGISTERED' for the main sender is thrown when unauthorized and should be ignored
-            this._handleBadAuthKey(true);
+            this._handleBadAuthKey(e.errorMessage === 'AUTH_KEY_UNREGISTERED');
           }
         } else {
           this._log.error('Unhandled error while receiving data');
