@@ -279,7 +279,9 @@ export function cancelApiProgressMaster(messageId: string) {
 
 function subscribeToWorker(onUpdate: OnApiUpdate) {
   worker?.addEventListener('message', ({ data }: WorkerMessageEvent) => {
-    data?.payloads.forEach((payload) => {
+    // Development worker reloads can emit an empty message while the old worker
+    // is being replaced. Ignore it instead of crashing the entire auth screen.
+    data?.payloads?.forEach((payload) => {
       if (payload.type === 'updates') {
         let DEBUG_startAt: number | undefined;
         if (DEBUG) {

@@ -542,7 +542,10 @@ async function handleSendMessage(
     return;
   }
 
-  const chat = selectChat(global, chatId!)!;
+  const chat = selectChat(global, chatId!);
+  // 路由会比 Saved Messages 的 chat 实体更早就绪；原生 bridge 会在实体到达后
+  // 重新上报 canSend。这里必须安全退出，不能让一次过早发送变成未捕获异常。
+  if (!chat) return;
   const user = selectUser(global, chatId!);
   const draft = selectDraft(global, chatId!, threadId!);
   const isForwarding = selectTabState(global, tabId).forwardMessages?.messageIds?.length;
@@ -2401,7 +2404,14 @@ async function sendMessageOrReduceLocal<T extends GlobalState>(
   localMessages: SendMessageParams[],
 ) {
   if (!sendParams.messagePriceInStars) {
-    sendMessage(global, sendParams);
+    // 上游普通发送保持 fire-and-forget；im-hub attempt 必须等 worker 建好本地
+    // 消息并回传关联后，外层 action 才能 seal。否则较慢机器上会先得到
+    // send_not_started，随后真实本地消息才到，造成假失败。
+    if (sendParams.imHubAttemptId) {
+      await sendMessage(global, sendParams);
+    } else {
+      void sendMessage(global, sendParams);
+    }
   } else {
     const message = await callApi('sendMessageLocal', sendParams);
     if (message) {

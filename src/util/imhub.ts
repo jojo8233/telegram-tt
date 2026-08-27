@@ -223,7 +223,8 @@ type ImHubSendAttempt = {
 };
 
 let composerBridge: ImHubComposerBridge | undefined;
-let contextRevision = -1;
+// 空会话也是一个可重放的有效状态；宿主协议不接受负 revision。
+let contextRevision = 0;
 let registeredNativeBridge: ImHubNativeBridge | undefined;
 const sendAttempts = new Map<string, ImHubSendAttempt>();
 const sendAttemptIdByLocalMessage = new Map<string, string>();
@@ -274,11 +275,13 @@ export function reportImHubAccountIdentity(currentUserId?: string): void {
   ensureImHubCommandListener();
   bridge.emit({ protocolVersion: 2, type: 'bridge.ready' });
   if (currentUserId) {
-    reportedPlatformAccountExternalId = currentUserId;
+    // 上游运行时来源可能并非严格遵守声明类型；跨 IPC 前统一成字符串。
+    const externalId = String(currentUserId);
+    reportedPlatformAccountExternalId = externalId;
     bridge.emit({
       protocolVersion: 2,
       type: 'account.identity',
-      platformAccountExternalId: currentUserId,
+      platformAccountExternalId: externalId,
     });
   } else if (reportedPlatformAccountExternalId !== undefined) {
     reportedPlatformAccountExternalId = undefined;
@@ -344,6 +347,13 @@ function ensureImHubCommandListener(): void {
   registeredNativeBridge = bridge;
   bridge.onCommand((command) => {
     if (command.type === 'bridge.request-state') {
+      if (reportedPlatformAccountExternalId) {
+        bridge.emit({
+          protocolVersion: 2,
+          type: 'account.identity',
+          platformAccountExternalId: reportedPlatformAccountExternalId,
+        });
+      }
       reportImHubContext();
       reportImHubComposerState();
       return;

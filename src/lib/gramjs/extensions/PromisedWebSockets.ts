@@ -3,7 +3,11 @@ import { Mutex } from 'async-mutex';
 import { concat } from '../../../util/encoding/buffer';
 
 const closeError = new Error('WebSocket was closed');
-const CONNECTION_TIMEOUT = 3000;
+// Telegram's WebSocket TLS handshake can legitimately take several seconds on
+// higher-latency networks. Three seconds caused healthy endpoints to be marked
+// unavailable before Chromium finished connecting, which then forced an HTTP
+// fallback loop and left the QR login screen spinning indefinitely.
+const CONNECTION_TIMEOUT = 12000;
 const MAX_TIMEOUT = 30000;
 
 export default class PromisedWebSockets {

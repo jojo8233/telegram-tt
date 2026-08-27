@@ -1671,7 +1671,9 @@ const Composer = ({
     attemptId: string,
     canContinue: () => boolean,
   ): Promise<boolean> => {
-    if (!checkCanSendRichContent() || !canContinue()) return Promise.resolve(false);
+    if (!chat || !currentMessageList || !checkCanSendRichContent() || !canContinue()) {
+      return Promise.resolve(false);
+    }
     if (!starsForAllMessages) {
       return handleSend(false, undefined, undefined, attemptId, canContinue);
     }
@@ -1695,7 +1697,9 @@ const Composer = ({
       chat && commandText && resolveEphemeralCommand(getGlobal(), { chat, commandText }),
     );
     return Boolean(
-      hasInputContent
+      chat
+      && currentMessageList
+      && hasInputContent
       && !editingMessage
       && !isEphemeralReply
       && !isEphemeralCommand
