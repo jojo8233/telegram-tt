@@ -3529,13 +3529,16 @@ async function translateViaImHub(
   // 按 id 顺序取文本，下标就是回填时的对应关系
   const items = messageIds.map((id) => {
     const message = selectChatMessage(global, chatId, id);
-    return { id, text: message?.content?.text?.text ?? '' };
+    return { id, sourceText: message?.content?.text?.text ?? '' };
   });
 
-  const results = await translateBatch(items.map((i) => i.text), toLanguageCode);
+  const results = await translateBatch(items.map((item) => item.sourceText), toLanguageCode);
 
   global = getGlobal();
   items.forEach((item, index) => {
+    const currentMessage = selectChatMessage(global, chatId, item.id);
+    if (currentMessage?.content.text?.text !== item.sourceText) return;
+
     const r = results?.[index];
     global = updateMessageTranslation(global, chatId, item.id, toLanguageCode, {
       isPending: false,

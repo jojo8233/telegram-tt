@@ -900,7 +900,10 @@ const Message = ({
   );
   const isSummaryPending = Boolean(summary?.isPending);
   const isNewTextPending = isTranslationPending || isSummaryPending;
-  const previousTranslatedText = usePreviousDeprecated(translatedText, Boolean(shouldTranslate));
+  const previousTranslationSnapshot = usePreviousDeprecated(translatedText ? {
+    sourceText: text?.text,
+    translatedText,
+  } : undefined, Boolean(shouldTranslate));
 
   useEffectWithPrevDeps(([prevIsShowingSummary]) => {
     if (summary?.text || (prevIsShowingSummary && !isShowingSummary)) {
@@ -908,7 +911,10 @@ const Message = ({
     }
   }, [isShowingSummary, summary?.text]);
 
-  const currentTranslatedText = translatedText || previousTranslatedText;
+  const currentTranslatedText = translatedText
+    || (previousTranslationSnapshot && previousTranslationSnapshot.sourceText === text?.text
+      ? previousTranslationSnapshot.translatedText
+      : undefined);
 
   const phoneCall = action?.type === 'phoneCall' ? action : undefined;
 

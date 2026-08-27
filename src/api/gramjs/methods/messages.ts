@@ -55,8 +55,9 @@ import {
   SUPPORTED_PHOTO_CONTENT_TYPES,
   SUPPORTED_VIDEO_CONTENT_TYPES,
 } from '../../../config';
+import { areDeepEqual } from '../../../util/areDeepEqual';
 import { fetchFile } from '../../../util/files';
-import { compact, split } from '../../../util/iteratees';
+import { compact, omit, split } from '../../../util/iteratees';
 import { getMessageKey, getMtpEphemeralMessageId } from '../../../util/keys/messageKey';
 import { getServerTime } from '../../../util/serverTime';
 import { interpolateArray } from '../../../util/waveform';
@@ -1053,6 +1054,8 @@ export async function editMessage({
     content: newContent,
     isInvertedMedia,
   };
+  const hasRequestedChanges = !areDeepEqual(message.content, messageUpdate.content)
+    || message.isInvertedMedia !== messageUpdate.isInvertedMedia;
 
   sendApiUpdate({
     '@type': isScheduled ? 'updateScheduledMessage' : 'updateMessage',
@@ -1089,6 +1092,12 @@ export async function editMessage({
     }
 
     const apiError = buildApiError(err as Error);
+    if (!isScheduled
+      && hasRequestedChanges
+      && apiError.message === 'MESSAGE_NOT_MODIFIED'
+      && await recoverImHubMessageNotModified(chat, messageUpdate)) {
+      return;
+    }
 
     sendApiUpdate({
       '@type': 'error',
@@ -1107,6 +1116,47 @@ export async function editMessage({
       isFull: true,
     });
   }
+}
+
+async function recoverImHubMessageNotModified(chat: ApiChat, messageUpdate: ApiMessage): Promise<boolean> {
+  const isChannel = getEntityTypeById(chat.id) === 'channel';
+  const result = await invokeRequest(
+    isChannel
+      ? new GramJs.channels.GetMessages({
+        channel: buildInputChannel(chat.id, chat.accessHash),
+        id: [new GramJs.InputMessageID({ id: messageUpdate.id })],
+      })
+      : new GramJs.messages.GetMessages({
+        id: [new GramJs.InputMessageID({ id: messageUpdate.id })],
+      }),
+    { shouldIgnoreErrors: true },
+  );
+  if (!result || result instanceof GramJs.messages.MessagesNotModified) return false;
+
+  const mtpMessage = result.messages[0];
+  if (!mtpMessage || mtpMessage instanceof GramJs.MessageEmpty) return false;
+
+  const editVersion = isChannel && 'pts' in result
+    ? result.pts
+    : (await invokeRequest(new GramJs.updates.GetState(), { shouldIgnoreErrors: true }))?.pts;
+  if (editVersion === undefined) return false;
+
+  processMessageAndUpdateThreadInfo(mtpMessage);
+  const apiMessage = buildApiMessage(mtpMessage);
+  if (!apiMessage) return false;
+  const recoveredMessage = {
+    ...omit(apiMessage, ['isOutgoing']),
+    isOutgoing: messageUpdate.isOutgoing,
+  } satisfies ApiMessage;
+  sendApiUpdate({
+    '@type': 'updateMessage',
+    id: recoveredMessage.id,
+    chatId: recoveredMessage.chatId,
+    message: recoveredMessage,
+    imHubEditVersion: editVersion,
+    isFull: true,
+  });
+  return true;
 }
 
 function canSendRichMessage(params: SendMessageParams) {
