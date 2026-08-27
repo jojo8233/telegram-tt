@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 type RequestStateCommand = {
-  protocolVersion: 2;
+  protocolVersion: 3;
   type: 'bridge.request-state';
 };
 
@@ -22,7 +22,7 @@ describe('im-hub native state replay', () => {
     Object.defineProperty(window, 'imHubNativeBridge', {
       configurable: true,
       value: {
-        protocolVersion: 2,
+        protocolVersion: 3,
         emit,
         onCommand(listener: (command: RequestStateCommand) => void) {
           commandListener = listener;
@@ -37,15 +37,15 @@ describe('im-hub native state replay', () => {
     emit.mockClear();
 
     expect(commandListener).toBeDefined();
-    commandListener?.({ protocolVersion: 2, type: 'bridge.request-state' });
+    commandListener?.({ protocolVersion: 3, type: 'bridge.request-state' });
 
     expect(emit).toHaveBeenNthCalledWith(1, {
-      protocolVersion: 2,
+      protocolVersion: 3,
       type: 'account.identity',
       platformAccountExternalId: '123456',
     });
     expect(emit).toHaveBeenNthCalledWith(2, {
-      protocolVersion: 2,
+      protocolVersion: 3,
       type: 'context.changed',
       contextRevision: 0,
       context: NULL_CONTEXT,

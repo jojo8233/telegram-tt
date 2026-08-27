@@ -1,3 +1,11 @@
+import type { ImHubOutboxBridgeEvent } from './imhubOutbox';
+
+import {
+  acknowledgeImHubOutboxEvent,
+  activateImHubOutbox,
+  deactivateImHubOutbox,
+  replayImHubOutbox,
+} from './imhubOutbox';
 import { getTranslationFn } from './localization';
 
 /**
@@ -19,7 +27,7 @@ interface BatchResult {
 }
 
 type ImHubComposerCommand = {
-  protocolVersion: 2;
+  protocolVersion: 3;
   requestId: string;
   contextRevision: number;
   platformConversationId: string;
@@ -34,25 +42,25 @@ type ImHubComposerCommand = {
 });
 
 type ImHubHostCommand = ImHubComposerCommand | {
-  protocolVersion: 2;
+  protocolVersion: 3;
   type: 'bridge.request-state';
 } | {
-  protocolVersion: 2;
+  protocolVersion: 3;
   type: 'event.ack';
   eventId: string;
   accepted: boolean;
   retryable: boolean;
 };
 
-type ImHubGuestEvent = {
-  protocolVersion: 2;
+type ImHubGuestEvent = ImHubOutboxBridgeEvent | {
+  protocolVersion: 3;
   type: 'bridge.ready' | 'account.signed-out';
 } | {
-  protocolVersion: 2;
+  protocolVersion: 3;
   type: 'account.identity';
   platformAccountExternalId: string;
 } | {
-  protocolVersion: 2;
+  protocolVersion: 3;
   type: 'context.changed';
   contextRevision: number;
   context: {
@@ -61,14 +69,14 @@ type ImHubGuestEvent = {
     contactDisplayName: string | null;
   } | null;
 } | {
-  protocolVersion: 2;
+  protocolVersion: 3;
   type: 'composer.state';
   contextRevision: number;
   platformConversationId: string;
   draft: string;
   canSend: boolean;
 } | {
-  protocolVersion: 2;
+  protocolVersion: 3;
   type: 'command.result';
   requestId: string;
   command: ImHubComposerCommand['type'];
@@ -103,7 +111,7 @@ const CANONICAL_LOCAL_ID = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const NEGATIVE_ZERO = /^-0(?:\.0+)?$/;
 const SEND_ATTEMPT_SEAL_DELAY_MS = 250;
 const MAX_COMPLETED_SEND_ATTEMPTS = 100;
-// Bridge v2 的 JSON 协议用 `null` 明确表示没有会话或展示名。
+// Bridge v3 的 JSON 协议用 `null` 明确表示没有会话或展示名。
 const BRIDGE_NULL: null = JSON.parse('null');
 
 export type ImHubTelegramMessageId = {
@@ -249,7 +257,7 @@ export function reportImHubComposerState(): void {
   const composer = composerBridge;
   if (!bridge || !composer) return;
   bridge.emit({
-    protocolVersion: 2,
+    protocolVersion: 3,
     type: 'composer.state',
     contextRevision,
     platformConversationId: composer.platformConversationId,
@@ -260,7 +268,7 @@ export function reportImHubComposerState(): void {
 
 function getImHubBridge(): ImHubNativeBridge | undefined {
   const bridge = window.imHubNativeBridge;
-  return bridge?.protocolVersion === 2 ? bridge : undefined;
+  return bridge?.protocolVersion === 3 ? bridge : undefined;
 }
 
 let reportedPlatformAccountExternalId: string | undefined;
@@ -273,19 +281,21 @@ export function reportImHubAccountIdentity(currentUserId?: string): void {
   const bridge = getImHubBridge();
   if (!bridge) return;
   ensureImHubCommandListener();
-  bridge.emit({ protocolVersion: 2, type: 'bridge.ready' });
+  bridge.emit({ protocolVersion: 3, type: 'bridge.ready' });
   if (currentUserId) {
     // 上游运行时来源可能并非严格遵守声明类型；跨 IPC 前统一成字符串。
     const externalId = String(currentUserId);
     reportedPlatformAccountExternalId = externalId;
+    activateImHubOutbox(externalId, (event) => bridge.emit(event));
     bridge.emit({
-      protocolVersion: 2,
+      protocolVersion: 3,
       type: 'account.identity',
       platformAccountExternalId: externalId,
     });
   } else if (reportedPlatformAccountExternalId !== undefined) {
     reportedPlatformAccountExternalId = undefined;
-    bridge.emit({ protocolVersion: 2, type: 'account.signed-out' });
+    deactivateImHubOutbox();
+    bridge.emit({ protocolVersion: 3, type: 'account.signed-out' });
   }
 }
 
@@ -349,16 +359,20 @@ function ensureImHubCommandListener(): void {
     if (command.type === 'bridge.request-state') {
       if (reportedPlatformAccountExternalId) {
         bridge.emit({
-          protocolVersion: 2,
+          protocolVersion: 3,
           type: 'account.identity',
           platformAccountExternalId: reportedPlatformAccountExternalId,
         });
       }
       reportImHubContext();
       reportImHubComposerState();
+      replayImHubOutbox();
       return;
     }
-    if (command.type === 'event.ack') return;
+    if (command.type === 'event.ack') {
+      acknowledgeImHubOutboxEvent(command.eventId, command.accepted, command.retryable);
+      return;
+    }
     void handleImHubComposerCommand(command);
   });
 }
@@ -447,7 +461,7 @@ function reportImHubContext(): void {
   if (!bridge) return;
   const composer = composerBridge;
   bridge.emit({
-    protocolVersion: 2,
+    protocolVersion: 3,
     type: 'context.changed',
     contextRevision,
     context: composer ? {
@@ -463,7 +477,7 @@ function reportImHubCommandSuccess(
   extra: { draft?: string } = {},
 ): void {
   getImHubBridge()?.emit({
-    protocolVersion: 2,
+    protocolVersion: 3,
     type: 'command.result',
     requestId: command.requestId,
     command: command.type,
@@ -475,7 +489,7 @@ function reportImHubCommandSuccess(
 
 function reportImHubCommandFailure(command: ImHubComposerCommand, code: string): void {
   getImHubBridge()?.emit({
-    protocolVersion: 2,
+    protocolVersion: 3,
     type: 'command.result',
     requestId: command.requestId,
     command: command.type,
@@ -529,7 +543,7 @@ function reportImHubSendResult(
   result: ImHubSendResult,
 ): void {
   getImHubBridge()?.emit({
-    protocolVersion: 2,
+    protocolVersion: 3,
     type: 'command.result',
     requestId: command.requestId,
     command: command.type,

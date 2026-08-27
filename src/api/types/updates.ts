@@ -286,6 +286,8 @@ export type ApiUpdateMessage = {
   '@type': 'updateMessage';
   chatId: string;
   id: number;
+  /** im-hub outbox 使用 MTProto pts 保持快速连续编辑的单调顺序。 */
+  imHubEditVersion?: number;
   poll?: ApiMessagePoll;
   webPages?: ApiWebPage[];
   shouldForceReply?: boolean;

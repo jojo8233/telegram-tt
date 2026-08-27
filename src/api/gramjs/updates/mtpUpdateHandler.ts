@@ -417,6 +417,7 @@ export function updater(update: Update) {
       id: message.id,
       chatId: message.chatId,
       message,
+      imHubEditVersion: update.pts,
       poll,
       webPages,
       isFull: true,

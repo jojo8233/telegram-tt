@@ -20,6 +20,11 @@ import {
   resolveImHubSendLocalMessage,
 } from '../../../util/imhub';
 import {
+  reportImHubMessageDeleted,
+  reportImHubMessageIdRemapped,
+  reportImHubMessageUpsert,
+} from '../../../util/imhubMessages';
+import {
   buildCollectionByKey, omit, unique,
 } from '../../../util/iteratees';
 import { getMessageKey, isLocalMessageId } from '../../../util/keys/messageKey';
@@ -444,6 +449,7 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
         }
       }
 
+      reportImHubMessageUpsert(global, newMessage);
       setGlobal(global);
 
       if (shouldBumpGuestBotTopPeer(global, newMessage)) {
@@ -635,6 +641,7 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
         // If update contains the full message, store it
         if (update.isFull) {
           global = addMessages(global, [update.message]);
+          reportImHubMessageUpsert(global, update.message, update.imHubEditVersion);
         }
         setGlobal(global);
         return;
@@ -646,6 +653,11 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       }
 
       global = updateWithLocalMedia(global, chatId, id, false, message);
+
+      const updatedMessage = selectChatMessage(global, chatId, id);
+      if (updatedMessage && update.imHubEditVersion !== undefined) {
+        reportImHubMessageUpsert(global, updatedMessage, update.imHubEditVersion);
+      }
 
       setGlobal(global);
 
@@ -776,6 +788,8 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       };
 
       const newMessage = selectChatMessage(global, chatId, message.id)!;
+      reportImHubMessageIdRemapped(global, chatId, localId, message.id);
+      reportImHubMessageUpsert(global, newMessage);
       global = updateChatLastMessage(global, chatId, newMessage);
 
       const thread = selectThreadByMessage(global, message);
@@ -1581,6 +1595,7 @@ export function deleteMessages<T extends GlobalState>(
   // Channel update
 
   if (chatId) {
+    ids.forEach((id) => reportImHubMessageDeleted(global, chatId, id));
     const chat = selectChat(global, chatId);
     if (!chat) return;
 
@@ -1660,6 +1675,7 @@ export function deleteMessages<T extends GlobalState>(
     const commonBoxChatId = selectCommonBoxChatId(global, id);
     if (commonBoxChatId) {
       chatIdsToUpdate.push(commonBoxChatId);
+      reportImHubMessageDeleted(global, commonBoxChatId, id);
 
       global = updateChatMessage(global, commonBoxChatId, id, {
         isDeleting: true,
