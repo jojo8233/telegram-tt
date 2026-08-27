@@ -962,6 +962,9 @@ export default class MTProtoSender {
       this.logWithIndex.debug('Receiving items from the network...');
       try {
         body = await this.getConnection()!.recv();
+        if (!body) {
+          throw new Error('Connection returned no data');
+        }
       } catch (e: any) {
         // this._log.info('Connection closed while receiving data');
         /** when the server disconnects us we want to reconnect */
