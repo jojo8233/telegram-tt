@@ -17,6 +17,7 @@ import {
 } from './browser/windowEnvironment';
 import * as cacheApi from './cacheApi';
 import { fetchBlob } from './files';
+import isErrorIgnored from './isErrorIgnored';
 import { ACCOUNT_SLOT } from './multiaccount';
 import { oggToWav } from './oggToWav';
 
@@ -224,7 +225,13 @@ if (IS_PROGRESSIVE_SUPPORTED) {
     }
 
     async function downloadWithRetry(retryNumber = 0) {
-      const result = await callApi('downloadMedia', { mediaFormat: ApiMediaFormat.Progressive, ...params });
+      let result;
+      try {
+        result = await callApi('downloadMedia', { mediaFormat: ApiMediaFormat.Progressive, ...params });
+      } catch (err: unknown) {
+        if (isErrorIgnored(err)) return undefined;
+        throw err;
+      }
       if (!result) {
         if (retryNumber >= MAX_MEDIA_RETRIES) {
           if (DEBUG) {

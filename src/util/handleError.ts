@@ -1,5 +1,6 @@
 import { DEBUG, DEBUG_ALERT_MSG } from '../config';
 import { isCurrentTabMaster } from './establishMultitabRole';
+import isErrorIgnored from './isErrorIgnored';
 import { throttle } from './schedulers';
 
 let showError = true;
@@ -44,6 +45,12 @@ export function handleError(err: Error) {
 }
 
 function handleErrorEvent(e: ErrorEvent | PromiseRejectionEvent) {
+  const err = e instanceof ErrorEvent ? (e.error || e.message) : e.reason;
+  if (isErrorIgnored(err)) {
+    e.preventDefault();
+    return;
+  }
+
   if (e instanceof ErrorEvent) {
     // https://stackoverflow.com/questions/49384120/resizeobserver-loop-limit-exceeded
     if (e.message === 'ResizeObserver loop limit exceeded') {
@@ -57,7 +64,7 @@ function handleErrorEvent(e: ErrorEvent | PromiseRejectionEvent) {
   }
 
   e.preventDefault();
-  handleError(e instanceof ErrorEvent ? (e.error || e.message) : e.reason);
+  handleError(err);
 }
 
 function getErrorMessage(err: Error) {
