@@ -47,6 +47,9 @@ const SENDER_TIMEOUT = 60 * 1000;
 // Telegram may have server issues so we try several times
 const SENDER_RETRIES = 5;
 
+// im-hub 补丁：非主 DC 超时使用独立类型，避免和主会话撤销共用错误文案
+class ExportedSenderTimeoutError extends Error {}
+
 class FileView {
   private type: 'memory' | 'opfs';
 
@@ -120,11 +123,16 @@ export async function downloadFile(
     try {
       return await downloadFile2(client, inputLocation, fileParams, shouldDebugExportedSenders);
     } catch (err: unknown) {
-      if (err instanceof RPCError && (
-        err.errorMessage.startsWith('SESSION_REVOKED')
-        || err.errorMessage.startsWith('CONNECTION_NOT_INITED')
-      ) && i < SENDER_RETRIES - 1) {
+      const isRetryableExportedSenderError = err instanceof ExportedSenderTimeoutError || (
+        err instanceof RPCError && (
+          err.errorMessage.startsWith('SESSION_REVOKED')
+          || err.errorMessage.startsWith('CONNECTION_NOT_INITED')
+        )
+      );
+      if (isRetryableExportedSenderError && i < SENDER_RETRIES - 1) {
         await client._cleanupExportedSenders(dcId);
+      } else if (err instanceof ExportedSenderTimeoutError) {
+        throw new Error('USER_CANCELED', { cause: err });
       } else {
         throw err;
       }
@@ -264,7 +272,7 @@ async function downloadFile2(
                 return Promise.reject(new Error('USER_CANCELED'));
               } else {
                 logWithSenderIndex(`Download timed out [not main] ${offsetMemo}`);
-                return Promise.reject(new Error('SESSION_REVOKED'));
+                return Promise.reject(new ExportedSenderTimeoutError());
               }
             }),
           ]))!;
