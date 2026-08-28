@@ -117,6 +117,8 @@ const TELEGRAM_CHAT_ID_MAX = (1n << 63n) - 1n;
 const CANONICAL_INTEGER = /^-?(?:0|[1-9]\d*)$/;
 const CANONICAL_LOCAL_ID = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 const NEGATIVE_ZERO = /^-0(?:\.0+)?$/;
+const TEMP_MESSAGE_INSTANCE_ID = crypto.randomUUID().replaceAll('-', '');
+const TEMP_MESSAGE_INSTANCE_ID_PATTERN = /^[0-9a-f]{32}$/;
 const SEND_ATTEMPT_SEAL_DELAY_MS = 250;
 const MAX_COMPLETED_SEND_ATTEMPTS = 100;
 // Bridge v3 的 JSON 协议用 `null` 明确表示没有会话或展示名。
@@ -130,6 +132,7 @@ export type ImHubTelegramMessageId = {
 } | {
   kind: 'temporary';
   source: 'telegram-tt';
+  instanceId?: string;
   localMessageId: string;
 });
 
@@ -147,7 +150,8 @@ function normalizeTelegramChatId(chatId: string): string {
 /**
  * telegram-tt 的服务器消息 id 就是 MTProto int32；本地回显则使用小数 id。
  * im-hub 以 chatId:serverMessageId 去重，本地 id 必须进入独立命名空间，等
- * updateMessageSendSucceeded 到达后再 remap，不能把小数截断成服务器 id。
+ * updateMessageSendSucceeded 到达后再 remap。页面实例 id 隔离会在重载后复用的
+ * telegram-tt 本地计数器，不能只靠小数 local id 标识消息。
  */
 export function buildImHubTelegramMessageId(chatId: string, messageId: number): string {
   const normalizedChatId = normalizeTelegramChatId(chatId);
@@ -163,7 +167,7 @@ export function buildImHubTelegramMessageId(chatId: string, messageId: number): 
   if (!CANONICAL_LOCAL_ID.test(localMessageId) || NEGATIVE_ZERO.test(localMessageId)) {
     throw new Error('Telegram 本地 message id 格式无效');
   }
-  return `${normalizedChatId}:temp:telegram-tt:${localMessageId}`;
+  return `${normalizedChatId}:temp:telegram-tt:${TEMP_MESSAGE_INSTANCE_ID}:${localMessageId}`;
 }
 
 export function parseImHubTelegramMessageId(messageId: string): ImHubTelegramMessageId | undefined {
@@ -190,6 +194,21 @@ export function parseImHubTelegramMessageId(messageId: string): ImHubTelegramMes
       const chatId = normalizeTelegramChatId(rawChatId);
       if (`${chatId}:temp:telegram-tt:${localMessageId}` !== messageId) return undefined;
       return { chatId, kind: 'temporary', source: 'telegram-tt', localMessageId };
+    }
+
+    if (parts.length === 5 && parts[1] === 'temp' && parts[2] === 'telegram-tt') {
+      const [rawChatId, , , instanceId, localMessageId] = parts;
+      if (!rawChatId
+        || !instanceId
+        || !TEMP_MESSAGE_INSTANCE_ID_PATTERN.test(instanceId)
+        || !localMessageId
+        || !CANONICAL_LOCAL_ID.test(localMessageId)
+        || NEGATIVE_ZERO.test(localMessageId)) return undefined;
+      const chatId = normalizeTelegramChatId(rawChatId);
+      if (`${chatId}:temp:telegram-tt:${instanceId}:${localMessageId}` !== messageId) return undefined;
+      return {
+        chatId, kind: 'temporary', source: 'telegram-tt', instanceId, localMessageId,
+      };
     }
   } catch {
     return undefined;
