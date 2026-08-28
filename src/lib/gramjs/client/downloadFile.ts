@@ -125,7 +125,8 @@ export async function downloadFile(
     } catch (err: unknown) {
       const isRetryableExportedSenderError = err instanceof ExportedSenderTimeoutError || (
         err instanceof RPCError && (
-          err.errorMessage.startsWith('SESSION_REVOKED')
+          err.errorMessage.startsWith('AUTH_KEY_UNREGISTERED')
+          || err.errorMessage.startsWith('SESSION_REVOKED')
           || err.errorMessage.startsWith('CONNECTION_NOT_INITED')
         )
       );
