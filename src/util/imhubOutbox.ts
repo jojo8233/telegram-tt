@@ -116,6 +116,80 @@ export function replayImHubOutbox(): void {
   schedulePump(0);
 }
 
+/**
+ * 把当前账号的 dead-letter 按原始顺序移回 pending。跨两个 IndexedDB database
+ * 无法做原子事务，因此先写 pending 再删 dead-letter；崩溃时最多留下重复证据，
+ * 不能先删后写导致事件永久丢失。
+ */
+export function retryImHubDeadLetters(): Promise<number> {
+  const accountExternalId = activeAccountExternalId;
+  if (!accountExternalId) return Promise.resolve(0);
+  return queueStorageOperation(async () => {
+    const [pending, deadLetters] = await Promise.all([
+      listPendingEvents(accountExternalId),
+      listDeadLetters(accountExternalId),
+    ]);
+    let available = Math.max(0, MAX_PENDING_EVENTS - pending.length);
+    let moved = 0;
+    for (const record of deadLetters.sort((first, second) => first.createdAt - second.createdAt)) {
+      const existing = await get<StoredOutboxEvent>(record.storageKey, OUTBOX_STORE);
+      if (existing) {
+        await del(record.storageKey, DEAD_LETTER_STORE);
+        continue;
+      }
+      if (available === 0) break;
+      await set(record.storageKey, {
+        storageKey: record.storageKey,
+        accountExternalId: record.accountExternalId,
+        event: record.event,
+        createdAt: record.createdAt,
+        attemptCount: 0,
+        nextAttemptAt: 0,
+      } satisfies StoredOutboxEvent, OUTBOX_STORE);
+      await del(record.storageKey, DEAD_LETTER_STORE);
+      available -= 1;
+      moved += 1;
+    }
+    const remaining = await listDeadLetters(accountExternalId);
+    lastErrorCode = remaining.length ? 'dead_letter_retry_partial' : undefined;
+    return moved;
+  }).then((moved) => {
+    void reportImHubOutboxStatus();
+    schedulePump(0);
+    return moved;
+  }).catch(() => {
+    lastErrorCode = 'outbox_storage_failed';
+    void reportImHubOutboxStatus();
+    return 0;
+  });
+}
+
+/** 明确的运维放弃动作；只清当前账号 dead-letter，并立即唤醒被容量故障阻塞的队首。 */
+export function discardImHubDeadLetters(): Promise<number> {
+  const accountExternalId = activeAccountExternalId;
+  if (!accountExternalId) return Promise.resolve(0);
+  return queueStorageOperation(async () => {
+    const deadLetters = await listDeadLetters(accountExternalId);
+    for (const record of deadLetters) await del(record.storageKey, DEAD_LETTER_STORE);
+    const pending = await listPendingEvents(accountExternalId);
+    const first = pending[0];
+    if (first) {
+      first.nextAttemptAt = 0;
+      await set(first.storageKey, first, OUTBOX_STORE);
+    }
+    lastErrorCode = undefined;
+    return deadLetters.length;
+  }).then((discarded) => {
+    void reportImHubOutboxStatus();
+    schedulePump(0);
+    return discarded;
+  }).catch(() => {
+    lastErrorCode = 'outbox_storage_failed';
+    void reportImHubOutboxStatus();
+    return 0;
+  });
+}
+
 export function enqueueImHubOutboxEvent(
   accountExternalId: string,
   input: ImHubOutboxEventInput,

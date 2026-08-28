@@ -4,7 +4,9 @@ import {
   acknowledgeImHubOutboxEvent,
   activateImHubOutbox,
   deactivateImHubOutbox,
+  discardImHubDeadLetters,
   replayImHubOutbox,
+  retryImHubDeadLetters,
 } from './imhubOutbox';
 import { getTranslationFn } from './localization';
 
@@ -50,6 +52,12 @@ type ImHubHostCommand = ImHubComposerCommand | {
   eventId: string;
   accepted: boolean;
   retryable: boolean;
+} | {
+  protocolVersion: 3;
+  type: 'outbox.retry-dead-letters';
+} | {
+  protocolVersion: 3;
+  type: 'outbox.discard-dead-letters';
 };
 
 type ImHubGuestEvent = ImHubOutboxBridgeEvent | {
@@ -371,6 +379,14 @@ function ensureImHubCommandListener(): void {
     }
     if (command.type === 'event.ack') {
       acknowledgeImHubOutboxEvent(command.eventId, command.accepted, command.retryable);
+      return;
+    }
+    if (command.type === 'outbox.retry-dead-letters') {
+      void retryImHubDeadLetters();
+      return;
+    }
+    if (command.type === 'outbox.discard-dead-letters') {
+      void discardImHubDeadLetters();
       return;
     }
     void handleImHubComposerCommand(command);
